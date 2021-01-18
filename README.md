@@ -9,7 +9,7 @@ to try and find the best possible move.
 
 * Board Representation - DONE
 * Board Analysing Functions - DONE
-* Movement - TODO
+* Movement Function - DONE
 * Game Functions - TODO
 * User Input Moves - TODO
 * Random Move Selection - TODO

@@ -24,8 +24,13 @@
 // 7 - 0111 = white king
 //
 // 8 - 1000 = out of bounds
+//
+// 8 tiles saved in one unsigned int with encoding as above
+// example: 0100 0100 0100 0100 0000 0000 0000 0000
+// indexing: 7 6 5 4 3 2 1 0
 
 ////////////////////////////////////////////////////////////////////////////////
+#define SET_VAL_BOARD(idx, val, board) board[idx >> 3] ^= (board[idx >> 3] ^ val << ((idx & 7) << 2)) & (15 << ((idx & 7) << 2))
 #define GET_VAL_BOARD(idx, board) idx > 31 ? 8 : board[idx >> 3] << 28 - ((idx & 7) << 2) >> 28
 #define IS_EMPTY(tile) (bool)(!tile)
 #define IS_PIECE(tile) (bool)(tile & 4)
@@ -52,7 +57,10 @@ unsigned int get_right_lower_idx(unsigned int& cur_tile_idx, unsigned int board[
 void get_move_possibility_loop_fun(unsigned int board[4], unsigned int move_pos[3], unsigned int& cur_idx, unsigned int& moves_idx, bool& whites_turn);
 void get_move_possibility(unsigned int board[4], unsigned int move_pos[3], bool whites_turn);
 ////////////////////////////////////////////////////////////////////////////////
+void move_piece(unsigned int board[4], unsigned int& cur_tile_idx, unsigned int (*get_dir_idx_ptr)(unsigned int&, unsigned int*));
+////////////////////////////////////////////////////////////////////////////////
 unsigned int translate_cords_to_idx(const char cords[2]);
+void translate_idx_to_cords(unsigned int idx, char cords[2]);
 ////////////////////////////////////////////////////////////////////////////////
 void test_get_idx_funs(unsigned int board[4]);
 void test_get_move_possibility(unsigned int board[4], unsigned int move_possibility[3], bool whites_turn);
@@ -247,6 +255,29 @@ void get_move_possibility(unsigned int board[4], unsigned int move_pos[3], bool 
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void move_piece(unsigned int board[4], unsigned int& cur_tile_idx, unsigned int (*get_dir_idx_ptr)(unsigned int&, unsigned int*))
+{
+    if (cur_tile_idx > 31) return;
+    
+    unsigned int other_tile_idx = get_dir_idx_ptr(cur_tile_idx, board);
+    if (other_tile_idx == 32) return;
+    
+    unsigned int cur_tile = GET_VAL_BOARD(cur_tile_idx, board);
+    if (!(GET_VAL_BOARD(other_tile_idx, board)))
+    {
+        SET_VAL_BOARD(other_tile_idx, cur_tile, board);
+        SET_VAL_BOARD(cur_tile_idx, 0, board);
+    }
+    else
+    {
+        SET_VAL_BOARD(get_dir_idx_ptr(other_tile_idx, board), cur_tile, board);
+        SET_VAL_BOARD(other_tile_idx, 0, board);
+        SET_VAL_BOARD(cur_tile_idx, 0, board);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 unsigned int translate_cords_to_idx(const char cords[2])
 {
     if (cords[1] < '0' || cords[1] > '8') return 32; // out of bounds
@@ -331,7 +362,7 @@ int main(int argc, char** argv)
     test_translate_cords_to_idx();
     test_translate_idx_to_cords();
     std::cout << std::endl;
-    test_get_move_possibility_init_loop(board);
+    //test_get_move_possibility_init_loop(board);
 
     //bench(board);
 
@@ -521,8 +552,6 @@ void test_get_move_possibility_init_loop(unsigned int board[4], int lower_bound,
         std::cout << std::endl;
 
         std::cout << std::endl;
-        //test_get_idx_funs(board);
-        //std::cout << std::endl;
         test_translate_cords_to_idx();
         std::cout << std::endl;
     }
@@ -558,6 +587,31 @@ void test_translate_idx_to_cords()
     }
     std::cout << std::endl;
 }
+
+//void move_piece(unsigned int board[4], unsigned int& cur_tile_idx, unsigned int (*get_dir_idx_ptr)(unsigned int&, unsigned int*))
+//{
+//    if (cur_tile_idx > 31) return;
+//
+//    unsigned int other_tile_idx = get_dir_idx_ptr(cur_tile_idx, board);
+//    if (other_tile_idx == 32) return;
+//
+//    unsigned int cur_tile = GET_VAL_BOARD(cur_tile_idx, board);
+//    unsigned int other_tile = GET_VAL_BOARD(other_tile_idx, board);
+//    if (IS_EMPTY(other_tile))
+//    {
+//        SET_VAL_BOARD(other_tile_idx, cur_tile, board);
+//        SET_VAL_BOARD(cur_tile_idx, 0, board);
+//    }
+//    else if (IS_WHITE(cur_tile) == IS_WHITE(other_tile)) return;
+//    else
+//    {
+//        unsigned int other_tile_idx2 = get_dir_idx_ptr(other_tile_idx, board);
+//        if (GET_VAL_BOARD(other_tile_idx2, board)) return;
+//        SET_VAL_BOARD(other_tile_idx2, cur_tile, board);
+//        SET_VAL_BOARD(other_tile_idx, 0, board);
+//        SET_VAL_BOARD(cur_tile_idx, 0, board);
+//    }
+//}
 
 //void bench(unsigned int board[4])
 //{
