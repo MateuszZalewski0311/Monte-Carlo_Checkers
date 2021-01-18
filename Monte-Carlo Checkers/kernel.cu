@@ -47,6 +47,8 @@ inline unsigned int get_num_of_moves(unsigned int& move_pos);
 inline void set_num_of_moves(unsigned int& move_pos, unsigned int& num_of_moves);
 void get_move_possibility_loop_fun(unsigned int board[4], unsigned int move_pos[3], unsigned int& cur_idx, unsigned int& moves_idx, bool& whites_turn);
 void get_move_possibility(unsigned int board[4], unsigned int move_pos[3], bool whites_turn);
+inline void set_val_move_pos(unsigned int& idx, unsigned int& val, unsigned int move_pos[3]);
+inline unsigned int get_val_move_pos(unsigned int& idx, unsigned int move_pos[3]);
 ////////////////////////////////////////////////////////////////////////////////
 unsigned int translate_cords_to_idx(const char cords[2]);
 ////////////////////////////////////////////////////////////////////////////////
@@ -278,7 +280,7 @@ void get_move_possibility_loop_fun(unsigned int board[4], unsigned int move_pos[
                         move_pos[0] = move_pos[1] = move_pos[2] = 0;
                         set_beating_pos(move_pos[2]);
                     }
-                    move_pos[moves_idx >> 2] |= cur_idx << ((moves_idx & 3) << 3);
+                    set_val_move_pos(moves_idx, cur_idx, move_pos);
                     ++moves_idx;
                     clear_move_check_guard(move_pos[2]);
                     return;
@@ -286,7 +288,7 @@ void get_move_possibility_loop_fun(unsigned int board[4], unsigned int move_pos[
             }
             else if (is_empty(result) && !get_beating_pos(move_pos[2]) && !get_move_check_guard(move_pos[2]))
             {
-                move_pos[moves_idx >> 2] |= cur_idx << ((moves_idx & 3) << 3);
+                set_val_move_pos(moves_idx, cur_idx, move_pos);
                 ++moves_idx;
                 set_move_check_guard(move_pos[2]);
                 continue;
@@ -305,6 +307,17 @@ void get_move_possibility(unsigned int board[4], unsigned int move_pos[3], bool 
     for (unsigned int i = 0; i < 32; ++i)
         get_move_possibility_loop_fun(board, move_pos, i, moves_idx, whites_turn);
     set_num_of_moves(move_pos[2], moves_idx); // record number of possible moves
+}
+
+inline void set_val_move_pos(unsigned int& idx, unsigned int& val, unsigned int move_pos[3])
+{
+    if (idx > 11) return;
+    move_pos[idx >> 2] |= val << ((idx & 3) << 3);
+}
+
+inline unsigned int get_val_move_pos(unsigned int& idx, unsigned int move_pos[3])
+{
+    return idx > 12 ? 0 : move_pos[idx >> 2] << 24 - ((idx & 3) << 3) >> 24;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -499,7 +512,7 @@ void test_get_move_possibility(unsigned int board[4], unsigned int move_possibil
     std::cout << "Indices of pawns possible to move: ";
     for (unsigned int i = 0; i < get_num_of_moves(move_possibility[2]); ++i)
     {
-        std::cout << (move_possibility[i >> 2] << 24 - ((i & 3) << 3) >> 24) << ' ';
+        std::cout << get_val_move_pos(i, move_possibility) << ' ';
     }
     std::cout << std::endl;
 }
