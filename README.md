@@ -8,7 +8,7 @@ to try and find the best possible move.
 ### Functionality
 
 * Board Representation - DONE
-* Board Analysing Functions - Partially DONE
+* Board Analysing Functions - DONE
 * Movement - TODO
 * Game Functions - TODO
 * User Input Moves - TODO
