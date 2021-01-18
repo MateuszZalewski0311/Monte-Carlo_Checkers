@@ -54,7 +54,8 @@ void test_get_idx_funs(unsigned int board[4]);
 void test_get_move_possibility(unsigned int board[4], unsigned int move_possibility[3], bool whites_turn);
 void test_get_move_possibility_board_init(unsigned int board[4], unsigned int test_choice);
 void test_get_move_possibility_init_loop(unsigned int board[4], int lower_bound = 1, int upper_bound = 7);
-void test_translate_cords_to_idx(unsigned int board[4]);
+void test_translate_cords_to_idx();
+void test_translate_idx_to_cords();
 void bench(unsigned int board[4]);
 ////////////////////////////////////////////////////////////////////////////////
 void init_board(unsigned int board[4])
@@ -343,6 +344,31 @@ unsigned int translate_cords_to_idx(const char cords[2])
     }
 }
 
+void translate_idx_to_cords(unsigned int idx, char cords[2])
+{
+    if (idx > 31) {
+        cords[0] = '-';
+        cords[1] = '-';
+        return;
+    }
+    else if (idx < 4) cords[1] = '1';
+    else if (idx >= 4 && idx < 8) cords[1] = '2';
+    else if (idx >= 8 && idx < 12) cords[1] = '3';
+    else if (idx >= 12 && idx < 16) cords[1] = '4';
+    else if (idx >= 16 && idx < 20) cords[1] = '5';
+    else if (idx >= 20 && idx < 24) cords[1] = '6';
+    else if (idx >= 24 && idx < 28) cords[1] = '7';
+    else if (idx >= 28 && idx < 32) cords[1] = '8';
+    if ((idx & 7) == 0) cords[0] = 'B';
+    else if ((idx & 7) == 1) cords[0] = 'D';
+    else if ((idx & 7) == 2) cords[0] = 'F';
+    else if ((idx & 7) == 3) cords[0] = 'H';
+    else if ((idx & 7) == 4) cords[0] = 'A';
+    else if ((idx & 7) == 5) cords[0] = 'C';
+    else if ((idx & 7) == 6) cords[0] = 'E';
+    else if ((idx & 7) == 7) cords[0] = 'G';
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 int main(int argc, char** argv)
@@ -364,7 +390,8 @@ int main(int argc, char** argv)
     std::cout << std::endl;
     //test_get_idx_funs(board);
     //std::cout << std::endl;
-    test_translate_cords_to_idx(board);
+    test_translate_cords_to_idx();
+    test_translate_idx_to_cords();
     std::cout << std::endl;
     //test_get_move_possibility_init_loop(board);
 
@@ -558,12 +585,12 @@ void test_get_move_possibility_init_loop(unsigned int board[4], int lower_bound,
         std::cout << std::endl;
         //test_get_idx_funs(board);
         //std::cout << std::endl;
-        test_translate_cords_to_idx(board);
+        test_translate_cords_to_idx();
         std::cout << std::endl;
     }
 }
 
-void test_translate_cords_to_idx(unsigned int board[4])
+void test_translate_cords_to_idx()
 {
     char cords[2] = {'A', '1'};
     for (char c2 = '1'; c2 < '9'; ++c2)
@@ -576,6 +603,20 @@ void test_translate_cords_to_idx(unsigned int board[4])
             std::cout << cords[0] << cords[1] << ": " << (32 == idx ? "--" : std::to_string(idx)) << '\t';
         }
         std::cout << std::endl;
+    }
+    std::cout << std::endl;
+}
+
+void test_translate_idx_to_cords()
+{
+    char cords[2] = { '-', '-' };
+    std::cout << '\t';
+    for (unsigned int idx = 0; idx < 32; ++idx)
+    {
+        translate_idx_to_cords(idx, cords);
+        std::cout << (idx > 9 ? '\0' : ' ') << idx << ": " << cords[0] << cords[1] << "\t\t";
+        if ((idx & 3) == 3) std::cout << std::endl;
+        if ((idx & 7) == 7) std::cout << '\t';
     }
     std::cout << std::endl;
 }
