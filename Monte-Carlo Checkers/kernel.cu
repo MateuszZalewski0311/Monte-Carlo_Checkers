@@ -12,9 +12,9 @@
 #include "device_launch_parameters.h"
 
 ////////////////////////////////////////////////////////////////////////////////
-#define BG_BBLUE_FG_BLACK "\033[3;104;30m"
-#define BG_BLUE_FG_BLACK "\033[3;44;30m"
-#define BG_BLUE_FG_WHITE "\033[3;44;37m"
+#define BG_BBLUE_FG_BLACK "\033[104;30m"
+#define BG_BLUE_FG_BLACK "\033[44;30m"
+#define BG_BLUE_FG_WHITE "\033[44;37m"
 #define BG_BLACK_FG_WHITE "\033[0m"
 #define BG_WHITE_FG_BLACK "\033[30;107m"
 
@@ -54,9 +54,9 @@
 #define SET_NUM_OF_MOVES(move_pos, num_of_moves) move_pos[2] |= num_of_moves << 20
 #define GET_VAL_MOVE_POS(idx, move_pos) move_pos[idx >> 2] << 24 - ((idx & 3) << 3) >> 24
 #define SET_VAL_MOVE_POS(idx, val, move_pos) move_pos[idx >> 2] |= val << ((idx & 3) << 3)
-#define GET_PIECE_DIR_FLAG(dir, move_pos) (move_pos[2] << 30 - (dir << 1) >> 30) & 1
+#define GET_PIECE_DIR_FLAG(dir, move_pos) (bool)((move_pos[2] << 30 - (dir << 1) >> 30) & 1)
 #define SET_PIECE_DIR_FLAG(dir, move_pos) move_pos[2] |= 1 << (dir << 1)
-#define GET_PIECE_BEATING_FLAG(dir, move_pos) (move_pos[2] << 30 - (dir << 1) >> 30) & 2
+#define GET_PIECE_BEATING_FLAG(dir, move_pos) (bool)((move_pos[2] << 30 - (dir << 1) >> 30) & 2)
 #define SET_PIECE_BEATING_FLAG(dir, move_pos) move_pos[2] |= 2 << (dir << 1)
 ////////////////////////////////////////////////////////////////////////////////
 void init_board(unsigned int board[4]);
@@ -71,8 +71,8 @@ void get_move_possibility(unsigned int board[4], unsigned int move_pos[3], bool 
 void get_piece_move_pos(unsigned int board[4], unsigned int move_pos[3], unsigned int& idx);
 void move_piece(unsigned int board[4], unsigned int& cur_tile_idx, unsigned int (*get_dir_idx_ptr)(unsigned int&, unsigned int*));
 ////////////////////////////////////////////////////////////////////////////////
-void game_loop();
-void human_fun(unsigned int board[4], unsigned int move_pos[3], bool& whites_turn);
+void game_loop(void (*white_player)(unsigned int*, unsigned int*, bool&), void (*black_player)(unsigned int*, unsigned int*, bool&));
+void human_player(unsigned int board[4], unsigned int move_pos[3], bool& whites_turn);
 ////////////////////////////////////////////////////////////////////////////////
 void disp_moveable_pieces(unsigned int board[4], unsigned int move_possibility[3], bool whites_turn);
 void disp_possible_dirs(unsigned int board[4], unsigned int move_pos[3], unsigned int& idx);
@@ -355,7 +355,7 @@ void move_piece(unsigned int board[4], unsigned int& cur_tile_idx, unsigned int 
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void game_loop(/*void (*player1_fun)(), void (*player2_fun)()*/)
+void game_loop(void (*white_player)(unsigned int*, unsigned int*, bool&), void (*black_player)(unsigned int*, unsigned int*, bool&))
 {
     unsigned int board[4], move_pos[3];
     bool game_over = false, whites_turn = false, white_present = false, black_present = false;
@@ -364,13 +364,17 @@ void game_loop(/*void (*player1_fun)(), void (*player2_fun)()*/)
 
     while (!game_over) // main loop
     {
+        system("CLS");
+        draw_board(board);
+        std::cout << std::endl << (whites_turn ? BG_WHITE_FG_BLACK : BG_BLACK_FG_WHITE) << (whites_turn ? "White" : "Black") << "'s turn!" << BG_BLACK_FG_WHITE << std::endl << std::endl;
+        //system("pause");
         if (whites_turn)
         {
-            human_fun(board, move_pos, whites_turn);
+            white_player(board, move_pos, whites_turn);
         }
         else
         {
-            human_fun(board, move_pos, whites_turn);
+            black_player(board, move_pos, whites_turn);
         }
         get_move_possibility(board, move_pos, whites_turn);
         if (0 == GET_NUM_OF_MOVES(move_pos)) game_over = true; // end game if noone can move
@@ -391,7 +395,7 @@ void game_loop(/*void (*player1_fun)(), void (*player2_fun)()*/)
     else if (black_present) std::cout << std::endl << BG_BLACK_FG_WHITE << "Black won!" << std::endl << std::endl;
 }
 
-void human_fun(unsigned int board[4], unsigned int move_pos[3], bool& whites_turn)
+void human_player(unsigned int board[4], unsigned int move_pos[3], bool& whites_turn)
 {
     unsigned int choosen_idx1, choosen_idx2, dir;
     char cords[2];
@@ -418,7 +422,7 @@ void human_fun(unsigned int board[4], unsigned int move_pos[3], bool& whites_tur
         std::cout << std::endl;
     };
 
-    human_fun_reset:
+    human_player_reset:
     while (true) // piece choice loop
     {
         redraw_first_stage();
@@ -466,7 +470,7 @@ void human_fun(unsigned int board[4], unsigned int move_pos[3], bool& whites_tur
             case 3:
                 get_dir_idx_ptr = &get_right_lower_idx;
                 break;
-            default: goto human_fun_reset;
+            default: goto human_player_reset;
             }
             if (choosen_idx2 != get_dir_idx_ptr(choosen_idx1, board)) continue;
 
@@ -479,20 +483,82 @@ void human_fun(unsigned int board[4], unsigned int move_pos[3], bool& whites_tur
             std::cout << std::endl << "Impossible move!" << std::endl << "Please choose a different move!" << std::endl << std::endl;
             system("pause");
             if (beating_sequence_in_progress) break;
-            goto human_fun_reset; // reset move choice
+            goto human_player_reset; // reset move choice
         }
         if (dir == 4)
         {
             std::cout << std::endl << "Impossible move!" << std::endl << "Please choose a different move!" << std::endl << std::endl;
             system("pause");
             if (beating_sequence_in_progress) continue;
-            goto human_fun_reset; // reset move choice
+            goto human_player_reset; // reset move choice
         }
-        if (!GET_BEATING_POS_FLAG(move_pos)) break; // check if last move was beating
+        if (choosen_idx1 == 32 || !GET_BEATING_POS_FLAG(move_pos)) break; // check if last move was beating
         get_piece_move_pos(board, move_pos, choosen_idx1);
         if (!GET_BEATING_POS_FLAG(move_pos)) break; // check if more beatings in sequence
         beating_sequence_in_progress = true;
     }
+    whites_turn = !whites_turn;
+}
+
+void random_player(unsigned int board[4], unsigned int move_pos[3], bool& whites_turn)
+{
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> dist;
+    unsigned int choosen_idx1, choosen_idx2, dir = 0, dir_idx_upper_bound, dir_idx_counter = 0;
+    bool beating_sequence_in_progress = false;
+    unsigned int (*get_dir_idx_ptr)(unsigned int&, unsigned int*);
+
+    get_move_possibility(board, move_pos, whites_turn);
+    dist = std::uniform_int_distribution<>(0, (GET_NUM_OF_MOVES(move_pos)) - 1);
+    choosen_idx1 = dist(gen);
+    choosen_idx1 = GET_VAL_MOVE_POS(choosen_idx1, move_pos);
+    do 
+    {
+        get_piece_move_pos(board, move_pos, choosen_idx1);
+        dir_idx_upper_bound = (GET_NUM_OF_MOVES(move_pos)) - 1;
+        dist = std::uniform_int_distribution<>(0, dir_idx_upper_bound);
+        choosen_idx2 = dist(gen);
+        for (dir = 0, dir_idx_counter = 0; dir_idx_counter <= dir_idx_upper_bound && dir < 4; ++dir)
+        {
+            switch (dir)
+            {
+            case 0:
+                get_dir_idx_ptr = &get_left_upper_idx;
+                break;
+            case 1:
+                get_dir_idx_ptr = &get_right_upper_idx;
+                break;
+            case 2:
+                get_dir_idx_ptr = &get_left_lower_idx;
+                break;
+            case 3:
+                get_dir_idx_ptr = &get_right_lower_idx;
+                break;
+            default: return;
+            }
+            if (dir_idx_counter == choosen_idx2);
+            else if ((GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_BEATING_FLAG(dir, move_pos)) || (!GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_DIR_FLAG(dir, move_pos)))
+            {
+                ++dir_idx_counter;
+                continue;
+            }
+            else continue;
+            if (!((GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_BEATING_FLAG(dir, move_pos)) || (!GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_DIR_FLAG(dir, move_pos)))) continue;
+            choosen_idx2 = get_dir_idx_ptr(choosen_idx1, board);
+            if ((GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_BEATING_FLAG(dir, move_pos)) || (!GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_DIR_FLAG(dir, move_pos)))
+            {
+                move_piece(board, choosen_idx1, get_dir_idx_ptr);
+                choosen_idx1 = get_dir_idx_ptr(choosen_idx2, board);
+                break;
+            }
+        }
+        if (dir == 4) return;
+        if (choosen_idx1 == 32 || !GET_BEATING_POS_FLAG(move_pos)) break; // check if last move was beating
+        get_piece_move_pos(board, move_pos, choosen_idx1);
+        if (!GET_BEATING_POS_FLAG(move_pos)) break; // check if more beatings in sequence
+        beating_sequence_in_progress = true;
+    } while (beating_sequence_in_progress);
     whites_turn = !whites_turn;
 }
 
@@ -634,8 +700,97 @@ void translate_idx_to_cords(unsigned int idx, char cords[2])
 
 int main(int argc, char** argv)
 {
-    game_loop();
+    unsigned short menu_choice = 0;
+    bool player_chosen = false;
+    void (*white_player)(unsigned int*, unsigned int*, bool&);
+    void (*black_player)(unsigned int*, unsigned int*, bool&);
 
+    std::cout << BG_WHITE_FG_BLACK << BG_BLACK_FG_WHITE;
+    system("cls");
+    while (menu_choice != 2) {
+        player_chosen = false;
+        std::cout << "1. Start Game - Black Always Begins" << std::endl;
+        std::cout << "2. Exit" << std::endl;
+        std::cout << "Choice: ";
+        std::cin >> menu_choice;
+        switch (menu_choice)
+        {
+        case 1:
+            std::cout << std::endl;
+            while (!player_chosen)
+            {
+                std::cout << "1. Human Player" << std::endl;
+                std::cout << "2. Random Player" << std::endl;
+                std::cout << BG_WHITE_FG_BLACK << "White" << BG_BLACK_FG_WHITE << " Player Choice: ";
+                std::cin >> menu_choice;
+                std::cout << std::endl;
+                switch (menu_choice)
+                {
+                case 1:
+                    white_player = &human_player;
+                    player_chosen = true;
+                    break;
+                case 2:
+                    white_player = &random_player;
+                    player_chosen = true;
+                    break;
+                default:
+                    system("CLS");
+                    std::cout << "Please provide a valid choice!" << std::endl << std::endl;
+                }
+            }
+            player_chosen = false;
+            while (!player_chosen)
+            {
+                std::cout << "1. Human Player" << std::endl;
+                std::cout << "2. Random Player" << std::endl;
+                std::cout << "Black Player Choice: ";
+                std::cin >> menu_choice;
+                std::cout << std::endl;
+                switch (menu_choice)
+                {
+                case 1:
+                    black_player = &human_player;
+                    player_chosen = true;
+                    break;
+                case 2:
+                    black_player = &random_player;
+                    player_chosen = true;
+                    break;
+                default:
+                    system("CLS");
+                    std::cout << "Please provide a valid choice!" << std::endl << std::endl;
+                }
+            }
+            menu_choice = 1;
+            std::cin.ignore();
+            game_loop(white_player, black_player);
+            system("pause");
+            system("CLS");
+            break;
+        case 2:
+            break;
+        default:
+            system("CLS");
+            std::cout << "Please provide a valid choice!" << std::endl << std::endl;
+            break;
+        }
+    }
+
+    //game_loop(&random_player, &random_player);
+    //unsigned int game_count = 1000;
+    //std::chrono::steady_clock::time_point start, finish;
+    //std::chrono::duration<double> elapsed;
+    //
+    //start = std::chrono::high_resolution_clock::now();
+    //for (unsigned int i = 0; i < game_count; ++i)
+    //    game_loop(&random_player, &random_player);
+    //finish = std::chrono::high_resolution_clock::now();
+    //elapsed = (finish - start);
+
+    //std::cout << "Games played: " << game_count << std::endl;
+    //std::cout << "Elapsed time: " << elapsed.count() << std::endl;
+    //std::cout << "Average time: " << elapsed.count() / game_count << std::endl;
     return 0;
 }
 
