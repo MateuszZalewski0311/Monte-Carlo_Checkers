@@ -29,7 +29,13 @@
 // example: 0100 0100 0100 0100 0000 0000 0000 0000
 // indexing: 7 6 5 4 3 2 1 0
 
-////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////// - old macro dump
+//#define GET_BEATING_POS_FLAG(move_pos) (bool)((move_pos[2] >> 16) & 1)
+//#define SET_BEATING_POS_FLAG(move_pos) move_pos[2] |= 1 << 16
+//#define GET_MOVE_CHECK_GUARD(move_pos) (bool)((move_pos[2] >> 17) & 1)
+//#define SET_MOVE_CHECK_GUARD(move_pos) move_pos[2] |= 1 << 17
+
+//////////////////////////////////////////////////////////////////////////////// - board state macros
 #define SET_VAL_BOARD(idx, val, board) board[idx >> 3] ^= (board[idx >> 3] ^ val << ((idx & 7) << 2)) & (15 << ((idx & 7) << 2))
 #define GET_VAL_BOARD(idx, board) idx > 31 ? 8 : board[idx >> 3] << 28 - ((idx & 7) << 2) >> 28
 #define IS_EMPTY(tile) (bool)(!tile)
@@ -37,16 +43,20 @@
 #define IS_WHITE(tile) (bool)(tile & 2)
 #define IS_BLACK(tile) (bool)(~tile & 2)
 #define IS_KING(tile) (bool)(tile & 1)
-////////////////////////////////////////////////////////////////////////////////
-#define GET_BEATING_POS_FLAG(move_pos) (bool)((move_pos >> 16) & 1)
-#define SET_BEATING_POS_FLAG(move_pos) move_pos |= 1 << 16
-#define GET_MOVE_CHECK_GUARD(move_pos) (bool)((move_pos >> 17) & 1)
-#define SET_MOVE_CHECK_GUARD(move_pos) move_pos |= 1 << 17
-#define CLEAR_MOVE_CHECK_GUARD(move_pos) move_pos &= 4294836223
-#define GET_NUM_OF_MOVES(move_pos) move_pos >> 20
-#define SET_NUM_OF_MOVES(move_pos, num_of_moves) move_pos |= num_of_moves << 20
-#define SET_VAL_MOVE_POS(idx, val, move_pos) move_pos[idx >> 2] |= val << ((idx & 3) << 3)
+//////////////////////////////////////////////////////////////////////////////// - move_pos array macros
+#define GET_BEATING_POS_FLAG(move_pos) (bool)(move_pos[2] & 65536)
+#define SET_BEATING_POS_FLAG(move_pos) move_pos[2] |= 65536
+#define GET_MOVE_CHECK_GUARD(move_pos) (bool)(move_pos[2] & 131072)
+#define SET_MOVE_CHECK_GUARD(move_pos) move_pos[2] |= 131072
+#define CLEAR_MOVE_CHECK_GUARD(move_pos) move_pos[2] &= 4294836223
+#define GET_NUM_OF_MOVES(move_pos) move_pos[2] >> 20
+#define SET_NUM_OF_MOVES(move_pos, num_of_moves) move_pos[2] |= num_of_moves << 20
 #define GET_VAL_MOVE_POS(idx, move_pos) move_pos[idx >> 2] << 24 - ((idx & 3) << 3) >> 24
+#define SET_VAL_MOVE_POS(idx, val, move_pos) move_pos[idx >> 2] |= val << ((idx & 3) << 3)
+#define GET_VAL_PIECE_DIR_FLAG(dir, move_pos) (move_pos[2] << 30 - (dir << 1) >> 30) & 1
+#define SET_VAL_PIECE_DIR_FLAG(dir, move_pos) move_pos[2] |= 1 << (dir << 1)
+#define GET_VAL_PIECE_BEATING_FLAG(dir, move_pos) (move_pos[2] << 30 - (dir << 1) >> 30) & 2
+#define SET_VAL_PIECE_BEATING_FLAG(dir, move_pos) move_pos[2] |= 2 << (dir << 1)
 ////////////////////////////////////////////////////////////////////////////////
 void init_board(unsigned int board[4]);
 void draw_board(unsigned int board[4]);
@@ -57,6 +67,7 @@ unsigned int get_right_lower_idx(unsigned int& cur_tile_idx, unsigned int board[
 void get_move_possibility_loop_fun(unsigned int board[4], unsigned int move_pos[3], unsigned int& cur_idx, unsigned int& moves_idx, bool& whites_turn);
 void get_move_possibility(unsigned int board[4], unsigned int move_pos[3], bool whites_turn);
 ////////////////////////////////////////////////////////////////////////////////
+void get_piece_move_pos(unsigned int board[4], unsigned int move_pos[3], unsigned int& idx);
 void move_piece(unsigned int board[4], unsigned int& cur_tile_idx, unsigned int (*get_dir_idx_ptr)(unsigned int&, unsigned int*));
 ////////////////////////////////////////////////////////////////////////////////
 unsigned int translate_cords_to_idx(const char cords[2]);
@@ -66,6 +77,7 @@ void test_get_idx_funs(unsigned int board[4]);
 void test_get_move_possibility(unsigned int board[4], unsigned int move_possibility[3], bool whites_turn);
 void test_get_move_possibility_board_init(unsigned int board[4], unsigned int test_choice);
 void test_get_move_possibility_init_loop(unsigned int board[4], int lower_bound = 1, int upper_bound = 7);
+void test_get_piece_move_pos(unsigned int board[4], unsigned int move_pos[3], unsigned int idx, unsigned int test_choice);
 void test_translate_cords_to_idx();
 void test_translate_idx_to_cords();
 //void bench(unsigned int board[4]);
@@ -218,27 +230,27 @@ void get_move_possibility_loop_fun(unsigned int board[4], unsigned int move_pos[
                 result = GET_VAL_BOARD(tmp_idx, board);
                 if (IS_EMPTY(result))
                 {
-                    if (!GET_BEATING_POS_FLAG(move_pos[2])) 
+                    if (!GET_BEATING_POS_FLAG(move_pos)) 
                     {
                         moves_idx = 0;
                         move_pos[0] = move_pos[1] = move_pos[2] = 0;
-                        SET_BEATING_POS_FLAG(move_pos[2]);
+                        SET_BEATING_POS_FLAG(move_pos);
                     }
                     SET_VAL_MOVE_POS(moves_idx, cur_idx, move_pos);
                     ++moves_idx;
-                    CLEAR_MOVE_CHECK_GUARD(move_pos[2]);
+                    CLEAR_MOVE_CHECK_GUARD(move_pos);
                     return;
                 }
             }
-            else if (IS_EMPTY(result) && !GET_BEATING_POS_FLAG(move_pos[2]) && !GET_MOVE_CHECK_GUARD(move_pos[2]))
+            else if (IS_EMPTY(result) && !GET_BEATING_POS_FLAG(move_pos) && !GET_MOVE_CHECK_GUARD(move_pos))
             {
                 SET_VAL_MOVE_POS(moves_idx, cur_idx, move_pos);
                 ++moves_idx;
-                SET_MOVE_CHECK_GUARD(move_pos[2]);
+                SET_MOVE_CHECK_GUARD(move_pos);
                 continue;
             }
         }
-        CLEAR_MOVE_CHECK_GUARD(move_pos[2]);
+        CLEAR_MOVE_CHECK_GUARD(move_pos);
     }
 }
 
@@ -246,14 +258,69 @@ void get_move_possibility_loop_fun(unsigned int board[4], unsigned int move_pos[
 // Additionally some space in move_pos[2] is used for flags and saving number of indexes in the whole array
 void get_move_possibility(unsigned int board[4], unsigned int move_pos[3], bool whites_turn)
 {
-    move_pos[0] = move_pos[1] = move_pos[2] = 0;
     unsigned int moves_idx = 0;
+    move_pos[0] = move_pos[1] = move_pos[2] = 0;
     for (unsigned int i = 0; i < 32; ++i)
         get_move_possibility_loop_fun(board, move_pos, i, moves_idx, whites_turn);
-    SET_NUM_OF_MOVES(move_pos[2], moves_idx); // record number of possible moves
+    SET_NUM_OF_MOVES(move_pos, moves_idx); // record number of possible moves
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+void get_piece_move_pos(unsigned int board[4], unsigned int move_pos[3], unsigned int& idx)
+{
+    unsigned int tile, tmp_idx, result, move_counter = 0;
+    move_pos[2] = 0;
+    
+    tile = GET_VAL_BOARD(idx, board);
+    if (IS_PIECE(tile))
+    {
+        unsigned int (*get_dir_idx_ptr)(unsigned int&, unsigned int*);
+        for (unsigned int direction = 0; direction < 4; ++direction)
+        {
+            if (IS_WHITE(tile) == (bool)(direction & 2) && !IS_KING(tile)) // do not check backwards movement
+                continue;
+            switch (direction)
+            {
+            case 0:
+                get_dir_idx_ptr = &get_left_upper_idx;
+                break;
+            case 1:
+                get_dir_idx_ptr = &get_right_upper_idx;
+                break;
+            case 2:
+                get_dir_idx_ptr = &get_left_lower_idx;
+                break;
+            case 3:
+                get_dir_idx_ptr = &get_right_lower_idx;
+                break;
+            default: return;
+            }
+            tmp_idx = get_dir_idx_ptr(idx, board);
+            result = GET_VAL_BOARD(tmp_idx, board);
+            if (IS_WHITE(tile) != IS_WHITE(result) && IS_PIECE(result)) // IS_PIECE = out of bounds guard
+            {
+                tmp_idx = get_dir_idx_ptr(tmp_idx, board);
+                result = GET_VAL_BOARD(tmp_idx, board);
+                if (IS_EMPTY(result))
+                {
+                    if (!GET_BEATING_POS_FLAG(move_pos)) {
+                        move_counter = 0;
+                        SET_BEATING_POS_FLAG(move_pos);
+                    }
+                    SET_VAL_PIECE_BEATING_FLAG(direction, move_pos);
+                    ++move_counter;
+                }
+            }
+            else if (IS_EMPTY(result) && !GET_BEATING_POS_FLAG(move_pos))
+            {
+                SET_VAL_PIECE_DIR_FLAG(direction, move_pos);
+                ++move_counter;
+            }
+        }
+    }
+    SET_NUM_OF_MOVES(move_pos, move_counter);
+}
 
 void move_piece(unsigned int board[4], unsigned int& cur_tile_idx, unsigned int (*get_dir_idx_ptr)(unsigned int&, unsigned int*))
 {
@@ -363,6 +430,8 @@ int main(int argc, char** argv)
     test_translate_idx_to_cords();
     std::cout << std::endl;
     //test_get_move_possibility_init_loop(board);
+    //std::cout << std::endl;
+    test_get_piece_move_pos(board, move_possibility, 9, 6);
 
     //bench(board);
 
@@ -464,9 +533,9 @@ void test_get_idx_funs(unsigned int board[4])
 void test_get_move_possibility(unsigned int board[4], unsigned int move_possibility[3], bool whites_turn)
 {
     get_move_possibility(board, move_possibility, whites_turn);
-    std::cout << std::endl << "Possible moves " << (whites_turn ? "for white: " : "for black: ") << (GET_NUM_OF_MOVES(move_possibility[2])) << std::endl;
+    std::cout << std::endl << "Possible moves " << (whites_turn ? "for white: " : "for black: ") << (GET_NUM_OF_MOVES(move_possibility)) << std::endl;
     std::cout << "Indices of pawns possible to move: ";
-    for (unsigned int i = 0; i < GET_NUM_OF_MOVES(move_possibility[2]); ++i)
+    for (unsigned int i = 0; i < GET_NUM_OF_MOVES(move_possibility); ++i)
     {
         std::cout << (GET_VAL_MOVE_POS(i, move_possibility)) << ' ';
     }
@@ -555,6 +624,59 @@ void test_get_move_possibility_init_loop(unsigned int board[4], int lower_bound,
         test_translate_cords_to_idx();
         std::cout << std::endl;
     }
+}
+
+void test_get_piece_move_pos(unsigned int board[4], unsigned int move_pos[3], unsigned int idx, unsigned int test_choice)
+{
+    char cords[2];
+    translate_idx_to_cords(idx, cords);
+
+    test_get_move_possibility_board_init(board, test_choice);
+    system("CLS");
+    draw_board(board);
+    test_translate_cords_to_idx();
+    test_translate_idx_to_cords();
+    std::cout << std::endl;
+
+    bool whites_turn = true;
+    test_get_move_possibility(board, move_pos, whites_turn);
+
+    whites_turn = false;
+    test_get_move_possibility(board, move_pos, whites_turn);
+    std::cout << std::endl;
+
+    get_piece_move_pos(board, move_pos, idx);
+    if (GET_NUM_OF_MOVES(move_pos))
+    {
+        std::cout << "Moves possible for piece on " << cords[0] << cords[1] << " - " << (GET_NUM_OF_MOVES(move_pos)) << std::endl;
+        if (GET_BEATING_POS_FLAG(move_pos)) std::cout << "BEATING POSSIBLE!" << std::endl;
+        std::cout << "List of tiles to choose from: ";
+        unsigned int (*get_dir_idx_ptr)(unsigned int&, unsigned int*);
+        for (unsigned int dir = 0; dir < 4; ++dir)
+        {
+            switch (dir)
+            {
+            case 0:
+                get_dir_idx_ptr = &get_left_upper_idx;
+                break;
+            case 1:
+                get_dir_idx_ptr = &get_right_upper_idx;
+                break;
+            case 2:
+                get_dir_idx_ptr = &get_left_lower_idx;
+                break;
+            case 3:
+                get_dir_idx_ptr = &get_right_lower_idx;
+                break;
+            default: break;
+            }
+            translate_idx_to_cords(get_dir_idx_ptr(idx, board), cords);
+            if (GET_BEATING_POS_FLAG(move_pos) && GET_VAL_PIECE_BEATING_FLAG(dir, move_pos)) std::cout << cords[0] << cords[1] << ' ';
+            else if (!GET_BEATING_POS_FLAG(move_pos) && GET_VAL_PIECE_DIR_FLAG(dir, move_pos)) std::cout << cords[0] << cords[1] << ' ';
+        }
+        std::cout << std::endl;
+    }
+    else std::cout << "Movement not possible for piece on " << cords[0] << cords[1] << std::endl;
 }
 
 void test_translate_cords_to_idx()
