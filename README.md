@@ -10,8 +10,8 @@ to try and find the best possible move.
 * Board Representation - DONE
 * Board Analysing Functions - DONE
 * Movement Function - DONE
-* Game Functions - Partially DONE
 * User Input Moves - DONE
-* Random Move Selection - TODO
+* Game Functions - Partially DONE
+* Random Move Selection - Partially DONE
 * MTS on CPU - TODO
 * MTS on CUDA - TODO
