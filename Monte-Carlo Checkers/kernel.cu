@@ -562,8 +562,8 @@ void get_cords_from_console(char cords[2])
             std::cout << "Incorrect input length!" << std::endl << std::endl;
             continue;
         }
-        cords[0] = input[0];
-        cords[1] = input[1];
+        cords[0] = toupper(input[0]);
+        cords[1] = toupper(input[1]);
         if ((cords[0] == 'A' || cords[0] == 'C' || cords[0] == 'E' || cords[0] == 'G') && (cords[1] == '2' || cords[1] == '4' || cords[1] == '6' || cords[1] == '8')) break;
         else if ((cords[0] == 'B' || cords[0] == 'D' || cords[0] == 'F' || cords[0] == 'H') && (cords[1] == '1' || cords[1] == '3' || cords[1] == '5' || cords[1] == '7')) break;
         std::cout << "Incorrect coordinates given!" << std::endl << std::endl;
