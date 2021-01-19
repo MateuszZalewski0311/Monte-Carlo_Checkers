@@ -16,6 +16,7 @@
 #define BG_BLUE_FG_BLACK "\033[3;44;30m"
 #define BG_BLUE_FG_WHITE "\033[3;44;37m"
 #define BG_BLACK_FG_WHITE "\033[0m"
+#define BG_WHITE_FG_BLACK "\033[30;107m"
 
 // 0 - 0000 = empty
 // 4 - 0100 = black man
@@ -53,10 +54,10 @@
 #define SET_NUM_OF_MOVES(move_pos, num_of_moves) move_pos[2] |= num_of_moves << 20
 #define GET_VAL_MOVE_POS(idx, move_pos) move_pos[idx >> 2] << 24 - ((idx & 3) << 3) >> 24
 #define SET_VAL_MOVE_POS(idx, val, move_pos) move_pos[idx >> 2] |= val << ((idx & 3) << 3)
-#define GET_VAL_PIECE_DIR_FLAG(dir, move_pos) (move_pos[2] << 30 - (dir << 1) >> 30) & 1
-#define SET_VAL_PIECE_DIR_FLAG(dir, move_pos) move_pos[2] |= 1 << (dir << 1)
-#define GET_VAL_PIECE_BEATING_FLAG(dir, move_pos) (move_pos[2] << 30 - (dir << 1) >> 30) & 2
-#define SET_VAL_PIECE_BEATING_FLAG(dir, move_pos) move_pos[2] |= 2 << (dir << 1)
+#define GET_PIECE_DIR_FLAG(dir, move_pos) (move_pos[2] << 30 - (dir << 1) >> 30) & 1
+#define SET_PIECE_DIR_FLAG(dir, move_pos) move_pos[2] |= 1 << (dir << 1)
+#define GET_PIECE_BEATING_FLAG(dir, move_pos) (move_pos[2] << 30 - (dir << 1) >> 30) & 2
+#define SET_PIECE_BEATING_FLAG(dir, move_pos) move_pos[2] |= 2 << (dir << 1)
 ////////////////////////////////////////////////////////////////////////////////
 void init_board(unsigned int board[4]);
 void draw_board(unsigned int board[4]);
@@ -70,9 +71,16 @@ void get_move_possibility(unsigned int board[4], unsigned int move_pos[3], bool 
 void get_piece_move_pos(unsigned int board[4], unsigned int move_pos[3], unsigned int& idx);
 void move_piece(unsigned int board[4], unsigned int& cur_tile_idx, unsigned int (*get_dir_idx_ptr)(unsigned int&, unsigned int*));
 ////////////////////////////////////////////////////////////////////////////////
+void game_loop();
+void human_fun(unsigned int board[4], unsigned int move_pos[3], bool& whites_turn);
+////////////////////////////////////////////////////////////////////////////////
+void disp_moveable_pieces(unsigned int board[4], unsigned int move_possibility[3], bool whites_turn);
+void disp_possible_dirs(unsigned int board[4], unsigned int move_pos[3], unsigned int& idx);
+void get_cords_from_console(char cords[2]);
 unsigned int translate_cords_to_idx(const char cords[2]);
 void translate_idx_to_cords(unsigned int idx, char cords[2]);
 ////////////////////////////////////////////////////////////////////////////////
+void testing_function();
 void test_get_idx_funs(unsigned int board[4]);
 void test_get_move_possibility(unsigned int board[4], unsigned int move_possibility[3], bool whites_turn);
 void test_get_move_possibility_board_init(unsigned int board[4], unsigned int test_choice);
@@ -130,7 +138,6 @@ void draw_board(unsigned int board[4])
             }
         }
     }
-    std::cout << BG_BLACK_FG_WHITE << std::endl;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -308,13 +315,13 @@ void get_piece_move_pos(unsigned int board[4], unsigned int move_pos[3], unsigne
                         move_counter = 0;
                         SET_BEATING_POS_FLAG(move_pos);
                     }
-                    SET_VAL_PIECE_BEATING_FLAG(direction, move_pos);
+                    SET_PIECE_BEATING_FLAG(direction, move_pos);
                     ++move_counter;
                 }
             }
             else if (IS_EMPTY(result) && !GET_BEATING_POS_FLAG(move_pos))
             {
-                SET_VAL_PIECE_DIR_FLAG(direction, move_pos);
+                SET_PIECE_DIR_FLAG(direction, move_pos);
                 ++move_counter;
             }
         }
@@ -337,13 +344,231 @@ void move_piece(unsigned int board[4], unsigned int& cur_tile_idx, unsigned int 
     }
     else
     {
-        SET_VAL_BOARD(get_dir_idx_ptr(other_tile_idx, board), cur_tile, board);
         SET_VAL_BOARD(other_tile_idx, 0, board);
         SET_VAL_BOARD(cur_tile_idx, 0, board);
+        other_tile_idx = get_dir_idx_ptr(other_tile_idx, board);
+        SET_VAL_BOARD(other_tile_idx, cur_tile, board);
     }
+    if ((!IS_KING(cur_tile)) && ((IS_WHITE(cur_tile) && other_tile_idx < 4) || (IS_BLACK(cur_tile) && other_tile_idx > 27)))
+        SET_VAL_BOARD(other_tile_idx, (cur_tile | 1), board); // promote to king
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+void game_loop(/*void (*player1_fun)(), void (*player2_fun)()*/)
+{
+    unsigned int board[4], move_pos[3];
+    bool game_over = false, whites_turn = false, white_present = false, black_present = false;
+
+    init_board(board);
+
+    while (!game_over) // main loop
+    {
+        if (whites_turn)
+        {
+            human_fun(board, move_pos, whites_turn);
+        }
+        else
+        {
+            human_fun(board, move_pos, whites_turn);
+        }
+        get_move_possibility(board, move_pos, whites_turn);
+        if (0 == GET_NUM_OF_MOVES(move_pos)) game_over = true; // end game if noone can move
+    }
+    for (unsigned int i = 0; i < 32; ++i)
+    {
+        move_pos[0] = GET_VAL_BOARD(i, board);
+        if (IS_PIECE(move_pos[0]))
+        {
+            if (IS_WHITE(move_pos[0])) white_present = true;
+            if (IS_BLACK(move_pos[0])) black_present = true;
+        }
+    }
+    system("CLS");
+    draw_board(board);
+    if (white_present && black_present) std::cout << std::endl << "Game ended in a draw!" << std::endl << std::endl;
+    else if (white_present) std::cout << std::endl << BG_WHITE_FG_BLACK << "White won!" << BG_BLACK_FG_WHITE << std::endl << std::endl;
+    else if (black_present) std::cout << std::endl << BG_BLACK_FG_WHITE << "Black won!" << std::endl << std::endl;
+}
+
+void human_fun(unsigned int board[4], unsigned int move_pos[3], bool& whites_turn)
+{
+    unsigned int choosen_idx1, choosen_idx2, dir;
+    char cords[2];
+    bool board_beating_flag, beating_sequence_in_progress = false;
+
+    auto redraw_beginning = [board, &whites_turn]()
+    {
+        system("CLS");
+        draw_board(board);
+        std::cout << std::endl << (whites_turn ? BG_WHITE_FG_BLACK : BG_BLACK_FG_WHITE) << (whites_turn ? "White" : "Black") << "'s turn!" << BG_BLACK_FG_WHITE << std::endl << std::endl;
+    };
+    auto redraw_first_stage = [board, move_pos, &whites_turn, redraw_beginning]()
+    {
+        redraw_beginning();
+        get_move_possibility(board, move_pos, whites_turn);
+        disp_moveable_pieces(board, move_pos, whites_turn);
+        std::cout << std::endl;
+    };
+    auto redraw_second_stage = [board, move_pos, &whites_turn, &choosen_idx1, redraw_beginning]()
+    {
+        redraw_beginning();
+        get_piece_move_pos(board, move_pos, choosen_idx1);
+        disp_possible_dirs(board, move_pos, choosen_idx1);
+        std::cout << std::endl;
+    };
+
+    human_fun_reset:
+    while (true) // piece choice loop
+    {
+        redraw_first_stage();
+        get_cords_from_console(cords);
+        choosen_idx1 = translate_cords_to_idx(cords);
+        board_beating_flag = GET_BEATING_POS_FLAG(move_pos);
+
+        get_piece_move_pos(board, move_pos, choosen_idx1);
+        if (0 == (GET_NUM_OF_MOVES(move_pos)))
+        {
+            std::cout << std::endl << "This piece cannot move!" << std::endl << "Please choose a different piece!" << std::endl << std::endl;
+            system("pause");
+            continue;
+        }
+        else if (board_beating_flag != GET_BEATING_POS_FLAG(move_pos))
+        {
+            std::cout << std::endl << "BEATING POSSIBLE!" << std::endl << "Please choose a different piece!" << std::endl << std::endl;
+            system("pause");
+            continue;
+        }
+        break;
+    }
+
+    while (true) // move sequence loop
+    {
+        redraw_second_stage();
+        get_cords_from_console(cords);
+        choosen_idx2 = translate_cords_to_idx(cords);
+
+        unsigned int (*get_dir_idx_ptr)(unsigned int&, unsigned int*);
+        for (dir = 0; dir < 4; ++dir)
+        {
+            if (dir < 2 && choosen_idx2 > choosen_idx1) continue;
+            switch (dir)
+            {
+            case 0:
+                get_dir_idx_ptr = &get_left_upper_idx;
+                break;
+            case 1:
+                get_dir_idx_ptr = &get_right_upper_idx;
+                break;
+            case 2:
+                get_dir_idx_ptr = &get_left_lower_idx;
+                break;
+            case 3:
+                get_dir_idx_ptr = &get_right_lower_idx;
+                break;
+            default: goto human_fun_reset;
+            }
+            if (choosen_idx2 != get_dir_idx_ptr(choosen_idx1, board)) continue;
+
+            if ((GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_BEATING_FLAG(dir, move_pos)) || (!GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_DIR_FLAG(dir, move_pos)))
+            {
+                move_piece(board, choosen_idx1, get_dir_idx_ptr);
+                choosen_idx1 = get_dir_idx_ptr(choosen_idx2, board);
+                break;
+            }
+            std::cout << std::endl << "Impossible move!" << std::endl << "Please choose a different move!" << std::endl << std::endl;
+            system("pause");
+            if (beating_sequence_in_progress) break;
+            goto human_fun_reset; // reset move choice
+        }
+        if (dir == 4)
+        {
+            std::cout << std::endl << "Impossible move!" << std::endl << "Please choose a different move!" << std::endl << std::endl;
+            system("pause");
+            if (beating_sequence_in_progress) continue;
+            goto human_fun_reset; // reset move choice
+        }
+        if (!GET_BEATING_POS_FLAG(move_pos)) break; // check if last move was beating
+        get_piece_move_pos(board, move_pos, choosen_idx1);
+        if (!GET_BEATING_POS_FLAG(move_pos)) break; // check if more beatings in sequence
+        beating_sequence_in_progress = true;
+    }
+    whites_turn = !whites_turn;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void disp_moveable_pieces(unsigned int board[4], unsigned int move_possibility[3], bool whites_turn)
+{
+    char cords[2]{'-'};
+    std::cout << "Possible moves for " << (whites_turn ? "white" : "black") << " - " << (GET_NUM_OF_MOVES(move_possibility)) << std::endl;
+    std::cout << "Tiles with moveable pieces: ";
+    for (unsigned int i = 0; i < GET_NUM_OF_MOVES(move_possibility); ++i)
+    {
+        translate_idx_to_cords((GET_VAL_MOVE_POS(i, move_possibility)), cords);
+        std::cout << cords[0] << cords[1] << ' ';
+    }
+    std::cout << std::endl;
+}
+
+void disp_possible_dirs(unsigned int board[4], unsigned int move_pos[3], unsigned int& idx)
+{
+    char cords[2]{'-'};
+    translate_idx_to_cords(idx, cords);
+
+    get_piece_move_pos(board, move_pos, idx);
+    if (GET_NUM_OF_MOVES(move_pos))
+    {
+        std::cout << "Moves possible for piece on " << cords[0] << cords[1] << " - " << (GET_NUM_OF_MOVES(move_pos)) << std::endl;
+        if (GET_BEATING_POS_FLAG(move_pos)) std::cout << "BEATING POSSIBLE!" << std::endl;
+        std::cout << "List of tiles to choose from: ";
+        unsigned int (*get_dir_idx_ptr)(unsigned int&, unsigned int*);
+        for (unsigned int dir = 0; dir < 4; ++dir)
+        {
+            switch (dir)
+            {
+            case 0:
+                get_dir_idx_ptr = &get_left_upper_idx;
+                break;
+            case 1:
+                get_dir_idx_ptr = &get_right_upper_idx;
+                break;
+            case 2:
+                get_dir_idx_ptr = &get_left_lower_idx;
+                break;
+            case 3:
+                get_dir_idx_ptr = &get_right_lower_idx;
+                break;
+            default: break;
+            }
+            translate_idx_to_cords(get_dir_idx_ptr(idx, board), cords);
+            if (GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_BEATING_FLAG(dir, move_pos)) std::cout << cords[0] << cords[1] << ' ';
+            else if (!GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_DIR_FLAG(dir, move_pos)) std::cout << cords[0] << cords[1] << ' ';
+        }
+        std::cout << std::endl;
+    }
+    else std::cout << "Movement not possible for piece on " << cords[0] << cords[1] << std::endl;
+}
+
+void get_cords_from_console(char cords[2])
+{
+    while (true)
+    {
+        std::string input = "";
+        std::cout << "Please provide coordinates: ";
+        std::getline(std::cin, input);
+        if (input.size() != 2)
+        {
+            std::cout << "Incorrect input length!" << std::endl << std::endl;
+            continue;
+        }
+        cords[0] = input[0];
+        cords[1] = input[1];
+        if ((cords[0] == 'A' || cords[0] == 'C' || cords[0] == 'E' || cords[0] == 'G') && (cords[1] == '2' || cords[1] == '4' || cords[1] == '6' || cords[1] == '8')) break;
+        else if ((cords[0] == 'B' || cords[0] == 'D' || cords[0] == 'F' || cords[0] == 'H') && (cords[1] == '1' || cords[1] == '3' || cords[1] == '5' || cords[1] == '7')) break;
+        std::cout << "Incorrect coordinates given!" << std::endl << std::endl;
+    }
+}
 
 unsigned int translate_cords_to_idx(const char cords[2])
 {
@@ -409,6 +634,14 @@ void translate_idx_to_cords(unsigned int idx, char cords[2])
 
 int main(int argc, char** argv)
 {
+    game_loop();
+
+    return 0;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+void testing_function()
+{
     unsigned int board[4];
 
     init_board(board);
@@ -431,14 +664,9 @@ int main(int argc, char** argv)
     std::cout << std::endl;
     //test_get_move_possibility_init_loop(board);
     //std::cout << std::endl;
-    test_get_piece_move_pos(board, move_possibility, 9, 6);
-
-    //bench(board);
-
-    return 0;
+    //test_get_piece_move_pos(board, move_possibility, 9, 6);
 }
 
-////////////////////////////////////////////////////////////////////////////////
 void test_get_idx_funs(unsigned int board[4])
 {
     //test top
@@ -671,8 +899,8 @@ void test_get_piece_move_pos(unsigned int board[4], unsigned int move_pos[3], un
             default: break;
             }
             translate_idx_to_cords(get_dir_idx_ptr(idx, board), cords);
-            if (GET_BEATING_POS_FLAG(move_pos) && GET_VAL_PIECE_BEATING_FLAG(dir, move_pos)) std::cout << cords[0] << cords[1] << ' ';
-            else if (!GET_BEATING_POS_FLAG(move_pos) && GET_VAL_PIECE_DIR_FLAG(dir, move_pos)) std::cout << cords[0] << cords[1] << ' ';
+            if (GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_BEATING_FLAG(dir, move_pos)) std::cout << cords[0] << cords[1] << ' ';
+            else if (!GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_DIR_FLAG(dir, move_pos)) std::cout << cords[0] << cords[1] << ' ';
         }
         std::cout << std::endl;
     }
