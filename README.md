@@ -15,5 +15,5 @@ to try and find the best possible move.
 * Player Functions
   * Human - DONE
   * Fully Random - DONE
-  * MTS on CPU - Partially DONE
-  * MTS on CUDA - TODO
+  * MCTS on CPU - Partially DONE
+  * MCTS on CUDA - TODO

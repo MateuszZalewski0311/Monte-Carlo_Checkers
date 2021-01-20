@@ -73,7 +73,7 @@ void human_player(unsigned int board[4], unsigned int move_pos[4]);
 void random_player(unsigned int board[4], unsigned int move_pos[4]);
 unsigned int simulate_game(unsigned int board[4]);
 unsigned int count_beating_sequences_for_piece_dir(unsigned int board[4], unsigned int cur_tile_idx, unsigned int dir);
-void MTS_CPU_player(unsigned int board[4]);
+void MCTS_CPU_player(unsigned int board[4]);
 ////////////////////////////////////////////////////////////////////////////////
 void disp_moveable_pieces(unsigned int board[4], unsigned int move_pos[4]);
 void disp_possible_dirs(unsigned int board[4], unsigned int move_pos[4], unsigned int& idx);
@@ -632,7 +632,7 @@ unsigned int count_beating_sequences_for_piece_dir(unsigned int board[4], unsign
     return possible_moves;
 }
 
-void MTS_CPU_player(unsigned int board[4])
+void MCTS_CPU_player(unsigned int board[4])
 {
     //std::random_device rd;
     //std::mt19937 gen(rd());
@@ -860,10 +860,11 @@ int main(int argc, char** argv)
     std::cout << BG_WHITE_FG_BLACK << BG_BLACK_FG_WHITE;
     system("cls");
     //testing_function();
-    while (menu_choice != 2) {
+    while (menu_choice != 3) {
         player_chosen = false;
         std::cout << "1. Start Game - Black Always Begins" << std::endl;
-        std::cout << "2. Exit" << std::endl;
+        std::cout << "2. Simulate a Game" << std::endl;
+        std::cout << "3. Exit" << std::endl;
         std::cout << "Choice: ";
         std::cin >> menu_choice;
         switch (menu_choice)
@@ -925,6 +926,16 @@ int main(int argc, char** argv)
             system("CLS");
             break;
         case 2:
+            init_board(board);
+            simulate_game(board);
+            if (board[0] & 2 && board[0] & 1) std::cout << std::endl << "Game ended in a draw!" << std::endl << std::endl;
+            else if (board[0] & 2) std::cout << std::endl << BG_WHITE_FG_BLACK << "White won!" << BG_BLACK_FG_WHITE << std::endl << std::endl;
+            else if (board[0] & 1) std::cout << std::endl << "Black won!" << std::endl << std::endl;
+            else if (!board[0]) std::cout << std::endl << "Error occured!" << std::endl << std::endl;
+            system("pause");
+            system("CLS");
+            break;
+        case 3:
             break;
         default:
             system("CLS");
