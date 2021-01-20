@@ -11,7 +11,9 @@ to try and find the best possible move.
 * Board Analysing Functions - DONE
 * Movement Function - DONE
 * User Input Moves - DONE
-* Game Functions - Partially DONE
-* Random Move Selection - Partially DONE
-* MTS on CPU - TODO
-* MTS on CUDA - TODO
+* Game Loop - DONE
+* Player Functions
+ * Human - DONE
+ * Fully Random - DONE
+ * MTS on CPU - Partially DONE
+ * MTS on CUDA - TODO

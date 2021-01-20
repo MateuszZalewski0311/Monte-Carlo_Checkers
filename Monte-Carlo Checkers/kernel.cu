@@ -72,7 +72,7 @@ void game_loop(unsigned int board[4], void (*white_player)(unsigned int*, unsign
 void human_player(unsigned int board[4], unsigned int move_pos[4]);
 void random_player(unsigned int board[4], unsigned int move_pos[4]);
 unsigned int simulate_game(unsigned int board[4]);
-unsigned int count_beating_sequences_for_piece(unsigned int board[4], unsigned int cur_tile_idx, unsigned int dir);
+unsigned int count_beating_sequences_for_piece_dir(unsigned int board[4], unsigned int cur_tile_idx, unsigned int dir);
 void MTS_CPU_player(unsigned int board[4]);
 ////////////////////////////////////////////////////////////////////////////////
 void disp_moveable_pieces(unsigned int board[4], unsigned int move_pos[4]);
@@ -586,7 +586,7 @@ unsigned int simulate_game(unsigned int board[4])
     return board[0];
 }
 
-unsigned int count_beating_sequences_for_piece(unsigned int board[4], unsigned int cur_tile_idx, unsigned int dir)
+unsigned int count_beating_sequences_for_piece_dir(unsigned int board[4], unsigned int cur_tile_idx, unsigned int dir)
 {
     unsigned int piece_pos[4], tmp_board[4]{}, possible_moves = 0, dir_tile_idx;
     bool tmp;
@@ -626,7 +626,7 @@ unsigned int count_beating_sequences_for_piece(unsigned int board[4], unsigned i
         {
             possible_moves = 0;
             for (unsigned int dir = 0; dir < 4; ++dir)
-                possible_moves += count_beating_sequences_for_piece(tmp_board, cur_tile_idx, dir);
+                possible_moves += count_beating_sequences_for_piece_dir(tmp_board, cur_tile_idx, dir);
         }
     }
     return possible_moves;
@@ -637,20 +637,48 @@ void MTS_CPU_player(unsigned int board[4])
     //std::random_device rd;
     //std::mt19937 gen(rd());
     //std::uniform_int_distribution<> dist(0, 0);
-    unsigned int move_pos[4]{};// , piece_pos[4]{}, tmp_board[4]{}, possible_moves = 0, ** first_layer;
-    unsigned int cur_tile_idx;
     //unsigned int (*get_dir_idx_ptr)(unsigned int&);
+    unsigned int move_pos[4]{}, ***first_layer, *sequence_count, choosable_piece_count = 0;// , piece_pos[4]{}, tmp_board[4]{};
+    double **success_rate, **tries;
 
     get_move_possibility(board, move_pos);
-    for (unsigned int i = 0; i < GET_NUM_OF_MOVES(move_pos); ++i)
+    choosable_piece_count = GET_NUM_OF_MOVES(move_pos);
+    first_layer = new unsigned int **[choosable_piece_count];
+    sequence_count = new unsigned int [choosable_piece_count];
+    success_rate = new double *[choosable_piece_count];
+    tries = new double *[choosable_piece_count];
+    
+    for (unsigned int i = 0; i < choosable_piece_count; ++i)
     {
-        cur_tile_idx = GET_VAL_MOVE_POS(i, move_pos);
-        //possible_moves += count_beating_sequences_for_piece(board, cur_tile_idx);
+        unsigned int possible_moves = 0;
+        unsigned int cur_tile_idx = GET_VAL_MOVE_POS(i, move_pos);
+        for (unsigned int dir = 0; dir < 4; ++dir)
+            possible_moves += count_beating_sequences_for_piece_dir(board, cur_tile_idx, dir);
+        sequence_count[i] = possible_moves;
+        first_layer[i] = new unsigned int *[sequence_count[i]];
+        success_rate[i] = new double [sequence_count[i]];
+        tries[i] = new double [sequence_count[i]];
+        
+        for (unsigned int j = 0; j < sequence_count[i]; ++j)
+            first_layer[i][j] = new unsigned int [4];
     }
-    //first_layer = new unsigned int *[GET_NUM_OF_MOVES(move_pos)];
-    //for (unsigned int i = 0; i < GET_NUM_OF_MOVES(move_pos); ++i)
-    //    first_layer[i] = new unsigned int[4];
-    //(first_layer[move_idx] = board
+
+    // build first layer
+
+    // make a move
+
+    for (unsigned int i = 0; i < choosable_piece_count; ++i)
+    {
+        for (unsigned int j = 0; j < sequence_count[i]; ++j)
+            delete[] first_layer[i][j];
+        delete[] first_layer[i];
+        delete[] success_rate[i];
+        delete[] tries[i];
+    }
+    delete[] first_layer;
+    delete[] success_rate;
+    delete[] tries;
+    delete[] sequence_count;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
