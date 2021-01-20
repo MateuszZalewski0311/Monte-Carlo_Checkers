@@ -367,9 +367,7 @@ void move_piece(unsigned int board[4], unsigned int& cur_tile_idx, unsigned int 
 void game_loop(unsigned int board[4], void (*white_player)(unsigned int*, unsigned int*), void (*black_player)(unsigned int*, unsigned int*))
 {
     unsigned int move_pos[4];
-    bool game_over = false;
-
-    while (!game_over) // main loop
+    do
     {
         system("CLS");
         draw_board(board);
@@ -383,8 +381,7 @@ void game_loop(unsigned int board[4], void (*white_player)(unsigned int*, unsign
             black_player(board, move_pos);
 
         get_move_possibility(board, move_pos);
-        if (0 == (GET_NUM_OF_MOVES(move_pos))) game_over = true; // end game if noone can move
-    }
+    } while (0 != (GET_NUM_OF_MOVES(move_pos))); // end game if noone can move
 }
 
 void human_player(unsigned int board[4], unsigned int move_pos[4])
@@ -580,14 +577,11 @@ void random_player(unsigned int board[4], unsigned int move_pos[4])
 unsigned int simulate_game(unsigned int board[4])
 {
     unsigned int move_pos[4];
-    bool game_over = false;
-
-    while (!game_over) // main loop
+    do
     {
         random_player(board, move_pos);
         get_move_possibility(board, move_pos);
-        if (0 == (GET_NUM_OF_MOVES(move_pos))) game_over = true; // end game if noone can move
-    }
+    } while (0 != (GET_NUM_OF_MOVES(move_pos))); // end game if noone can move
     get_end_state(board);
     return board[0];
 }
@@ -837,7 +831,7 @@ int main(int argc, char** argv)
 
     std::cout << BG_WHITE_FG_BLACK << BG_BLACK_FG_WHITE;
     system("cls");
-    testing_function();
+    //testing_function();
     while (menu_choice != 2) {
         player_chosen = false;
         std::cout << "1. Start Game - Black Always Begins" << std::endl;
