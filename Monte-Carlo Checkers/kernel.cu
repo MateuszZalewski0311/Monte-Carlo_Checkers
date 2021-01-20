@@ -25,6 +25,7 @@
 // 7 - 0111 = white king
 //
 // 8 - 1000 = out of bounds
+// 1xxx in tile_idx = 0 is used to save turn flag - TODO
 //
 // 8 tiles saved in one unsigned int with encoding as above
 // example: 0100 0100 0100 0100 0000 0000 0000 0000
@@ -67,7 +68,7 @@ unsigned int get_right_upper_idx(unsigned int& cur_tile_idx, unsigned int board[
 unsigned int get_left_lower_idx(unsigned int& cur_tile_idx, unsigned int board[4]);
 unsigned int get_right_lower_idx(unsigned int& cur_tile_idx, unsigned int board[4]);
 void get_move_possibility_loop_fun(unsigned int board[4], unsigned int move_pos[3], unsigned int& cur_idx, unsigned int& moves_idx, bool& whites_turn);
-void get_move_possibility(unsigned int board[4], unsigned int move_pos[3], bool& whites_turn);
+void get_move_possibility(unsigned int board[4], unsigned int move_pos[3], bool whites_turn);
 ////////////////////////////////////////////////////////////////////////////////
 void get_piece_move_pos(unsigned int board[4], unsigned int move_pos[3], unsigned int& idx);
 void move_piece(unsigned int board[4], unsigned int& cur_tile_idx, unsigned int (*get_dir_idx_ptr)(unsigned int&, unsigned int*));
@@ -80,7 +81,7 @@ void disp_possible_dirs(unsigned int board[4], unsigned int move_pos[3], unsigne
 void get_cords_from_console(char cords[2]);
 unsigned int translate_cords_to_idx(const char cords[2]);
 void translate_idx_to_cords(unsigned int idx, char cords[2]);
-void get_end_state(unsigned int board[4], bool& whites_turn);
+void get_end_state(unsigned int board[4]);
 void disp_end_state(unsigned int* board);
 ////////////////////////////////////////////////////////////////////////////////
 void testing_function();
@@ -208,7 +209,7 @@ unsigned int get_right_lower_idx(unsigned int& cur_tile_idx, unsigned int board[
 void get_move_possibility_loop_fun(unsigned int board[4], unsigned int move_pos[3], unsigned int& cur_idx, unsigned int& moves_idx, bool& whites_turn)
 {
     unsigned int tile, tmp_idx, result;
-    tile = GET_VAL_BOARD_S(cur_idx, board);
+    tile = GET_VAL_BOARD(cur_idx, board);
     if (IS_PIECE(tile) && (whites_turn == IS_WHITE(tile)))
     {
         unsigned int (*get_dir_idx_ptr)(unsigned int&, unsigned int*);
@@ -266,7 +267,7 @@ void get_move_possibility_loop_fun(unsigned int board[4], unsigned int move_pos[
 
 // Index of tile that can be moved is stored similarly as board representation, but in 8 bits instead of 4 bits
 // Additionally some space in move_pos[2] is used for flags and saving number of indexes in the whole array
-void get_move_possibility(unsigned int board[4], unsigned int move_pos[3], bool& whites_turn)
+void get_move_possibility(unsigned int board[4], unsigned int move_pos[3], bool whites_turn)
 {
     unsigned int moves_idx = 0;
     move_pos[0] = move_pos[1] = move_pos[2] = 0;
@@ -341,8 +342,8 @@ void move_piece(unsigned int board[4], unsigned int& cur_tile_idx, unsigned int 
     unsigned int other_tile_idx = get_dir_idx_ptr(cur_tile_idx, board);
     if (other_tile_idx == 32) return;
     
-    unsigned int cur_tile = GET_VAL_BOARD_S(cur_tile_idx, board);
-    if (!(GET_VAL_BOARD_S(other_tile_idx, board)))
+    unsigned int cur_tile = GET_VAL_BOARD(cur_tile_idx, board);
+    if (!(GET_VAL_BOARD(other_tile_idx, board)))
     {
         SET_VAL_BOARD(other_tile_idx, cur_tile, board);
         SET_VAL_BOARD(cur_tile_idx, 0, board);
@@ -382,7 +383,7 @@ void game_loop(unsigned int board[4], void (*white_player)(unsigned int*, unsign
         get_move_possibility(board, move_pos, whites_turn);
         if (0 == GET_NUM_OF_MOVES(move_pos)) game_over = true; // end game if noone can move
     }
-    get_end_state(board, whites_turn);
+    board[0] |= 8;
 }
 
 void human_player(unsigned int board[4], unsigned int move_pos[3], bool& whites_turn)
@@ -466,14 +467,10 @@ void human_player(unsigned int board[4], unsigned int move_pos[3], bool& whites_
 
             if ((GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_BEATING_FLAG(dir, move_pos)) || (!GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_DIR_FLAG(dir, move_pos)))
             {
-                board_beating_flag = IS_KING(board[choosen_idx1 >> 3] << 28 - ((choosen_idx1 & 7) << 2) >> 28); //memory recycling - dont mind the name
+                board_beating_flag = IS_KING((GET_VAL_BOARD(choosen_idx1, board))); //memory recycling - dont mind the name
                 move_piece(board, choosen_idx1, get_dir_idx_ptr);
                 choosen_idx1 = get_dir_idx_ptr(choosen_idx2, board);
-                if (GET_PIECE_BEATING_FLAG(dir, move_pos))
-                    beating_sequence_in_progress = IS_KING(board[choosen_idx1 >> 3] << 28 - ((choosen_idx1 & 7) << 2) >> 28); //memory recycling - dont mind the name
-                else
-                    beating_sequence_in_progress = IS_KING(board[choosen_idx2 >> 3] << 28 - ((choosen_idx2 & 7) << 2) >> 28); //memory recycling - dont mind the name
-                if (board_beating_flag != (IS_KING(board[choosen_idx1 >> 3] << 28 - ((choosen_idx1 & 7) << 2) >> 28)))
+                if (board_beating_flag != (IS_KING((GET_VAL_BOARD(choosen_idx1, board)))))
                 {
                     whites_turn = !whites_turn;
                     return;
@@ -544,18 +541,14 @@ void random_player(unsigned int board[4], unsigned int move_pos[3], bool& whites
                 continue;
             }
             else continue;
-            if (!((GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_BEATING_FLAG(dir, move_pos)) || (!GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_DIR_FLAG(dir, move_pos)))) continue;
-            choosen_idx2 = get_dir_idx_ptr(choosen_idx1, board);
+            
             if ((GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_BEATING_FLAG(dir, move_pos)) || (!GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_DIR_FLAG(dir, move_pos)))
             {
-                tmp = IS_KING(board[choosen_idx1 >> 3] << 28 - ((choosen_idx1 & 7) << 2) >> 28);
+                tmp = IS_KING((GET_VAL_BOARD(choosen_idx1, board))); // for promotion check
+                choosen_idx2 = get_dir_idx_ptr(choosen_idx1, board);
                 move_piece(board, choosen_idx1, get_dir_idx_ptr);
                 choosen_idx1 = get_dir_idx_ptr(choosen_idx2, board);
-                if (GET_PIECE_BEATING_FLAG(dir, move_pos))
-                    beating_sequence_in_progress = IS_KING(board[choosen_idx1 >> 3] << 28 - ((choosen_idx1 & 7) << 2) >> 28); //memory recycling - dont mind the name
-                else
-                    beating_sequence_in_progress = IS_KING(board[choosen_idx2 >> 3] << 28 - ((choosen_idx2 & 7) << 2) >> 28); //memory recycling - dont mind the name
-                if (tmp != (IS_KING(board[choosen_idx1 >> 3] << 28 - ((choosen_idx1 & 7) << 2) >> 28)))
+                if (tmp != (IS_KING((GET_VAL_BOARD(choosen_idx1, board)))))
                 {
                     whites_turn = !whites_turn;
                     return;
@@ -707,11 +700,11 @@ void translate_idx_to_cords(unsigned int idx, char cords[2])
 }
 
 // saves end state in board[0], 0 - error, 1 - black win, 2 - white win, 3 - draw 
-void get_end_state(unsigned int board[4], bool& whites_turn)
+void get_end_state(unsigned int board[4])
 {
     unsigned int move_pos[3];
-
-    get_move_possibility(board, move_pos, whites_turn);
+    
+    get_move_possibility(board, move_pos, (board[0] & 8));
     board[0] = 0;
     for (unsigned int i = 0; i < 32; ++i)
     {
@@ -728,6 +721,7 @@ void disp_end_state(unsigned int* board)
 {
     system("CLS");
     draw_board(board);
+    get_end_state(board);
     if (board[0] & 2 && board[0] & 1) std::cout << std::endl << "Game ended in a draw!" << std::endl << std::endl;
     else if (board[0] & 2) std::cout << std::endl << BG_WHITE_FG_BLACK << "White won!" << BG_BLACK_FG_WHITE << std::endl << std::endl;
     else if (board[0] & 1) std::cout << std::endl << BG_BLACK_FG_WHITE << "Black won!" << std::endl << std::endl;
@@ -805,6 +799,7 @@ int main(int argc, char** argv)
             menu_choice = 1;
             std::cin.ignore();
             init_board(board);
+            test_get_move_possibility_board_init(board, 7);
             game_loop(board, white_player, black_player);
             disp_end_state(board);
             system("pause");
