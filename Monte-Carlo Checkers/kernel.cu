@@ -118,7 +118,7 @@ void draw_board(unsigned int board[4])
         for (unsigned int j = 0; j < 8; ++j) // j = tile_in_board_idx
         {
             unsigned int tile = board[i] << (28 - (j << 2)) >> 28;
-            
+
             if (j == 0 || j == 4) std::cout << BG_BBLUE_FG_BLACK << ' ' << left_side_idx++ << ' ';
 
             if (white_first) std::cout << BG_BBLUE_FG_BLACK << "   ";
@@ -131,7 +131,7 @@ void draw_board(unsigned int board[4])
                 else std::cout << " @ ";
             }
             else std::cout << BG_BLUE_FG_BLACK << "   ";
-            
+
             if (!white_first) std::cout << BG_BBLUE_FG_BLACK << "   ";
 
             if ((j & 3) == 3) // swap colors for second row
@@ -192,7 +192,7 @@ unsigned int get_left_lower_idx(unsigned int& cur_tile_idx)
 
 unsigned int get_right_lower_idx(unsigned int& cur_tile_idx)
 {
-    if(cur_tile_idx > 31 || (cur_tile_idx >> 2) == 7) return 32; // second cond chcks if bottom row
+    if (cur_tile_idx > 31 || (cur_tile_idx >> 2) == 7) return 32; // second cond chcks if bottom row
     if (cur_tile_idx & 4) // even row (counting from 1)
     {
         return cur_tile_idx + 4;
@@ -242,7 +242,7 @@ void get_move_possibility_loop_fun(unsigned int board[4], unsigned int move_pos[
                 result = GET_VAL_BOARD(tmp_idx, board);
                 if (!IS_PIECE(result))
                 {
-                    if (!GET_BEATING_POS_FLAG(move_pos)) 
+                    if (!GET_BEATING_POS_FLAG(move_pos))
                     {
                         moves_idx = 0;
                         move_pos[0] = move_pos[1] = move_pos[2] = move_pos[3] = 0;
@@ -285,7 +285,7 @@ void get_piece_move_pos(unsigned int board[4], unsigned int move_pos[4], unsigne
 {
     unsigned int tile, tmp_idx, result, move_counter = 0;
     move_pos[2] = move_pos[3] = 0;
-    
+
     tile = GET_VAL_BOARD_S(idx, board);
     if (IS_PIECE(tile))
     {
@@ -341,10 +341,10 @@ void get_piece_move_pos(unsigned int board[4], unsigned int move_pos[4], unsigne
 void move_piece(unsigned int board[4], unsigned int& cur_tile_idx, unsigned int (*get_dir_idx_ptr)(unsigned int&))
 {
     if (cur_tile_idx > 31) return;
-    
+
     unsigned int other_tile_idx = get_dir_idx_ptr(cur_tile_idx);
     if (other_tile_idx == 32) return;
-    
+
     unsigned int cur_tile = GET_VAL_BOARD(cur_tile_idx, board);
     if (!(GET_VAL_BOARD(other_tile_idx, board)))
     {
@@ -411,7 +411,7 @@ void human_player(unsigned int board[4], unsigned int move_pos[4])
         std::cout << std::endl;
     };
 
-    human_player_reset:
+human_player_reset:
     while (true) // piece choice loop
     {
         redraw_first_stage();
@@ -514,7 +514,7 @@ void random_player(unsigned int board[4], unsigned int move_pos[4])
     dist = std::uniform_int_distribution<>(0, dir_idx_upper_bound);
     choosen_idx1 = dist(gen);
     choosen_idx1 = GET_VAL_MOVE_POS(choosen_idx1, move_pos);
-    do 
+    do
     {
         get_piece_move_pos(board, move_pos, choosen_idx1);
         dir_idx_upper_bound = (GET_NUM_OF_MOVES(move_pos)) - 1;
@@ -545,7 +545,7 @@ void random_player(unsigned int board[4], unsigned int move_pos[4])
                 continue;
             }
             else continue;
-            
+
             if (GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_BEATING_FLAG(dir, move_pos))
             {
                 tmp = IS_KING((GET_VAL_BOARD(choosen_idx1, board))); // for promotion check
@@ -583,7 +583,7 @@ unsigned int simulate_game(unsigned int board[4])
         get_move_possibility(board, move_pos);
     } while (0 != (GET_NUM_OF_MOVES(move_pos))); // end game if noone can move
     get_end_state(board);
-    return board[0];
+    return (board[0] & 2048 ? 2 : 0) | (board[0] & 128 ? 1 : 0);
 }
 
 unsigned int count_beating_sequences_for_piece_dir(unsigned int board[4], unsigned int cur_tile_idx, unsigned int dir)
@@ -591,7 +591,7 @@ unsigned int count_beating_sequences_for_piece_dir(unsigned int board[4], unsign
     unsigned int piece_pos[4], tmp_board[4]{}, possible_moves = 0, dir_tile_idx;
     bool tmp;
     unsigned int (*get_dir_idx_ptr)(unsigned int&);
-    
+
     tmp_board[0] = board[0]; tmp_board[1] = board[1]; tmp_board[2] = board[2]; tmp_board[3] = board[3];
     get_piece_move_pos(tmp_board, piece_pos, cur_tile_idx);
     switch (dir)
@@ -638,16 +638,16 @@ void MCTS_CPU_player(unsigned int board[4])
     //std::mt19937 gen(rd());
     //std::uniform_int_distribution<> dist(0, 0);
     //unsigned int (*get_dir_idx_ptr)(unsigned int&);
-    unsigned int move_pos[4]{}, ***first_layer, *sequence_count, choosable_piece_count = 0;// , piece_pos[4]{}, tmp_board[4]{};
-    double **success_rate, **tries;
+    unsigned int move_pos[4]{}, *** first_layer, * sequence_count, choosable_piece_count = 0;// , piece_pos[4]{}, tmp_board[4]{};
+    double** success_rate, ** tries;
 
     get_move_possibility(board, move_pos);
     choosable_piece_count = GET_NUM_OF_MOVES(move_pos);
-    first_layer = new unsigned int **[choosable_piece_count];
-    sequence_count = new unsigned int [choosable_piece_count];
-    success_rate = new double *[choosable_piece_count];
-    tries = new double *[choosable_piece_count];
-    
+    first_layer = new unsigned int** [choosable_piece_count];
+    sequence_count = new unsigned int[choosable_piece_count];
+    success_rate = new double* [choosable_piece_count];
+    tries = new double* [choosable_piece_count];
+
     for (unsigned int i = 0; i < choosable_piece_count; ++i)
     {
         unsigned int possible_moves = 0;
@@ -655,12 +655,12 @@ void MCTS_CPU_player(unsigned int board[4])
         for (unsigned int dir = 0; dir < 4; ++dir)
             possible_moves += count_beating_sequences_for_piece_dir(board, cur_tile_idx, dir);
         sequence_count[i] = possible_moves;
-        first_layer[i] = new unsigned int *[sequence_count[i]];
-        success_rate[i] = new double [sequence_count[i]];
-        tries[i] = new double [sequence_count[i]];
-        
+        first_layer[i] = new unsigned int* [sequence_count[i]];
+        success_rate[i] = new double[sequence_count[i]];
+        tries[i] = new double[sequence_count[i]];
+
         for (unsigned int j = 0; j < sequence_count[i]; ++j)
-            first_layer[i][j] = new unsigned int [4];
+            first_layer[i][j] = new unsigned int[4];
     }
 
     // build first layer
@@ -685,7 +685,7 @@ void MCTS_CPU_player(unsigned int board[4])
 
 void disp_moveable_pieces(unsigned int board[4], unsigned int move_pos[4])
 {
-    char cords[2]{'-'};
+    char cords[2]{ '-' };
     std::cout << "Possible moves for " << (GET_TURN_FLAG(board) ? "white" : "black") << " - " << (GET_NUM_OF_MOVES(move_pos)) << std::endl;
     std::cout << "Tiles with moveable pieces: ";
     for (unsigned int i = 0; i < GET_NUM_OF_MOVES(move_pos); ++i)
@@ -698,7 +698,7 @@ void disp_moveable_pieces(unsigned int board[4], unsigned int move_pos[4])
 
 void disp_possible_dirs(unsigned int board[4], unsigned int move_pos[4], unsigned int& idx)
 {
-    char cords[2]{'-'};
+    char cords[2]{ '-' };
     translate_idx_to_cords(idx, cords);
 
     get_piece_move_pos(board, move_pos, idx);
@@ -815,24 +815,23 @@ void translate_idx_to_cords(unsigned int idx, char cords[2])
     else if ((idx & 7) == 7) cords[0] = 'G';
 }
 
-// saves end state in board[0], 0 - error, 1 - black win, 2 - white win, 3 - draw 
+// saves end state in board[0], none - error, 1xxx xxxxx - black win, 1xxx xxxx xxxx - white win, both win - draw
+// after extracting: 0 - error, 1 - black win, 2 - white win, 3 - draw
+// to extract - (board[0] & 2048 ? 2 : 0) | (board[0] & 128 ? 1 : 0)
 void get_end_state(unsigned int board[4])
 {
     unsigned int move_pos[4];
-    
+
     get_move_possibility(board, move_pos);
     for (unsigned int i = 0; i < 32; ++i)
     {
         move_pos[0] = GET_VAL_BOARD(i, board);
         if (IS_PIECE(move_pos[0]))
         {
-            if (IS_WHITE(move_pos[0])) board[1] |= 128;
-            if (IS_BLACK(move_pos[0])) board[1] |= 8;
+            if (IS_WHITE(move_pos[0])) board[0] |= 2048;
+            if (IS_BLACK(move_pos[0])) board[0] |= 128;
         }
     }
-    board[0] = 0;
-    if (board[1] & 128) board[0] |= 2;
-    if (board[1] & 8) board[0] |= 1;
 }
 
 void disp_end_state(unsigned int* board)
@@ -840,9 +839,9 @@ void disp_end_state(unsigned int* board)
     system("CLS");
     draw_board(board);
     get_end_state(board);
-    if (board[0] & 2 && board[0] & 1) std::cout << std::endl << "Game ended in a draw!" << std::endl << std::endl;
-    else if (board[0] & 2) std::cout << std::endl << BG_WHITE_FG_BLACK << "White won!" << BG_BLACK_FG_WHITE << std::endl << std::endl;
-    else if (board[0] & 1) std::cout << std::endl << "Black won!" << std::endl << std::endl;
+    if (board[0] & 2048 && board[0] & 128) std::cout << std::endl << "Game ended in a draw!" << std::endl << std::endl;
+    else if (board[0] & 2048) std::cout << std::endl << BG_WHITE_FG_BLACK << "White won!" << BG_BLACK_FG_WHITE << std::endl << std::endl;
+    else if (board[0] & 128) std::cout << std::endl << "Black won!" << std::endl << std::endl;
     else if (!board[0]) std::cout << std::endl << "Error occured!" << std::endl << std::endl;
 }
 
@@ -928,10 +927,7 @@ int main(int argc, char** argv)
         case 2:
             init_board(board);
             simulate_game(board);
-            if (board[0] & 2 && board[0] & 1) std::cout << std::endl << "Game ended in a draw!" << std::endl << std::endl;
-            else if (board[0] & 2) std::cout << std::endl << BG_WHITE_FG_BLACK << "White won!" << BG_BLACK_FG_WHITE << std::endl << std::endl;
-            else if (board[0] & 1) std::cout << std::endl << "Black won!" << std::endl << std::endl;
-            else if (!board[0]) std::cout << std::endl << "Error occured!" << std::endl << std::endl;
+            disp_end_state(board);
             system("pause");
             system("CLS");
             break;
@@ -1251,7 +1247,7 @@ void test_get_piece_move_pos(unsigned int board[4], unsigned int move_pos[4], un
 
 void test_translate_cords_to_idx()
 {
-    char cords[2] = {'A', '1'};
+    char cords[2] = { 'A', '1' };
     for (char c2 = '1'; c2 < '9'; ++c2)
     {
         cords[1] = c2;
