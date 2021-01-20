@@ -38,7 +38,8 @@
 
 //////////////////////////////////////////////////////////////////////////////// - board state macros
 #define SET_VAL_BOARD(idx, val, board) board[idx >> 3] ^= (board[idx >> 3] ^ val << ((idx & 7) << 2)) & (15 << ((idx & 7) << 2))
-#define GET_VAL_BOARD(idx, board) idx > 31 ? 8 : board[idx >> 3] << 28 - ((idx & 7) << 2) >> 28
+#define GET_VAL_BOARD(idx, board) board[idx >> 3] << 28 - ((idx & 7) << 2) >> 28
+#define GET_VAL_BOARD_S(idx, board) idx > 31 ? 8 : board[idx >> 3] << 28 - ((idx & 7) << 2) >> 28
 #define IS_EMPTY(tile) (bool)(!tile)
 #define IS_PIECE(tile) (bool)(tile & 4)
 #define IS_WHITE(tile) (bool)(tile & 2)
@@ -66,7 +67,7 @@ unsigned int get_right_upper_idx(unsigned int& cur_tile_idx, unsigned int board[
 unsigned int get_left_lower_idx(unsigned int& cur_tile_idx, unsigned int board[4]);
 unsigned int get_right_lower_idx(unsigned int& cur_tile_idx, unsigned int board[4]);
 void get_move_possibility_loop_fun(unsigned int board[4], unsigned int move_pos[3], unsigned int& cur_idx, unsigned int& moves_idx, bool& whites_turn);
-void get_move_possibility(unsigned int board[4], unsigned int move_pos[3], bool whites_turn);
+void get_move_possibility(unsigned int board[4], unsigned int move_pos[3], bool& whites_turn);
 ////////////////////////////////////////////////////////////////////////////////
 void get_piece_move_pos(unsigned int board[4], unsigned int move_pos[3], unsigned int& idx);
 void move_piece(unsigned int board[4], unsigned int& cur_tile_idx, unsigned int (*get_dir_idx_ptr)(unsigned int&, unsigned int*));
@@ -79,6 +80,8 @@ void disp_possible_dirs(unsigned int board[4], unsigned int move_pos[3], unsigne
 void get_cords_from_console(char cords[2]);
 unsigned int translate_cords_to_idx(const char cords[2]);
 void translate_idx_to_cords(unsigned int idx, char cords[2]);
+void get_end_state(unsigned int board[4], bool& whites_turn);
+void disp_end_state(unsigned int* board);
 ////////////////////////////////////////////////////////////////////////////////
 void testing_function();
 void test_get_idx_funs(unsigned int board[4]);
@@ -205,7 +208,7 @@ unsigned int get_right_lower_idx(unsigned int& cur_tile_idx, unsigned int board[
 void get_move_possibility_loop_fun(unsigned int board[4], unsigned int move_pos[3], unsigned int& cur_idx, unsigned int& moves_idx, bool& whites_turn)
 {
     unsigned int tile, tmp_idx, result;
-    tile = GET_VAL_BOARD(cur_idx, board);
+    tile = GET_VAL_BOARD_S(cur_idx, board);
     if (IS_PIECE(tile) && (whites_turn == IS_WHITE(tile)))
     {
         unsigned int (*get_dir_idx_ptr)(unsigned int&, unsigned int*);
@@ -230,11 +233,11 @@ void get_move_possibility_loop_fun(unsigned int board[4], unsigned int move_pos[
             default: return;
             }
             tmp_idx = get_dir_idx_ptr(cur_idx, board);
-            result = GET_VAL_BOARD(tmp_idx, board);
+            result = GET_VAL_BOARD_S(tmp_idx, board);
             if (whites_turn != IS_WHITE(result) && IS_PIECE(result)) // IS_PIECE = out of bounds guard
             {
                 tmp_idx = get_dir_idx_ptr(tmp_idx, board);
-                result = GET_VAL_BOARD(tmp_idx, board);
+                result = GET_VAL_BOARD_S(tmp_idx, board);
                 if (IS_EMPTY(result))
                 {
                     if (!GET_BEATING_POS_FLAG(move_pos)) 
@@ -263,7 +266,7 @@ void get_move_possibility_loop_fun(unsigned int board[4], unsigned int move_pos[
 
 // Index of tile that can be moved is stored similarly as board representation, but in 8 bits instead of 4 bits
 // Additionally some space in move_pos[2] is used for flags and saving number of indexes in the whole array
-void get_move_possibility(unsigned int board[4], unsigned int move_pos[3], bool whites_turn)
+void get_move_possibility(unsigned int board[4], unsigned int move_pos[3], bool& whites_turn)
 {
     unsigned int moves_idx = 0;
     move_pos[0] = move_pos[1] = move_pos[2] = 0;
@@ -274,12 +277,14 @@ void get_move_possibility(unsigned int board[4], unsigned int move_pos[3], bool 
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Index of tile that can be moved is stored similarly as board representation, but in 8 bits instead of 2 bits
+// move_pos[2] is used for storing, the same spots as in get_move_possibility are used for beating available flag and number of indexes saved
 void get_piece_move_pos(unsigned int board[4], unsigned int move_pos[3], unsigned int& idx)
 {
     unsigned int tile, tmp_idx, result, move_counter = 0;
     move_pos[2] = 0;
     
-    tile = GET_VAL_BOARD(idx, board);
+    tile = GET_VAL_BOARD_S(idx, board);
     if (IS_PIECE(tile))
     {
         unsigned int (*get_dir_idx_ptr)(unsigned int&, unsigned int*);
@@ -304,11 +309,11 @@ void get_piece_move_pos(unsigned int board[4], unsigned int move_pos[3], unsigne
             default: return;
             }
             tmp_idx = get_dir_idx_ptr(idx, board);
-            result = GET_VAL_BOARD(tmp_idx, board);
+            result = GET_VAL_BOARD_S(tmp_idx, board);
             if (IS_WHITE(tile) != IS_WHITE(result) && IS_PIECE(result)) // IS_PIECE = out of bounds guard
             {
                 tmp_idx = get_dir_idx_ptr(tmp_idx, board);
-                result = GET_VAL_BOARD(tmp_idx, board);
+                result = GET_VAL_BOARD_S(tmp_idx, board);
                 if (IS_EMPTY(result))
                 {
                     if (!GET_BEATING_POS_FLAG(move_pos)) {
@@ -336,8 +341,8 @@ void move_piece(unsigned int board[4], unsigned int& cur_tile_idx, unsigned int 
     unsigned int other_tile_idx = get_dir_idx_ptr(cur_tile_idx, board);
     if (other_tile_idx == 32) return;
     
-    unsigned int cur_tile = GET_VAL_BOARD(cur_tile_idx, board);
-    if (!(GET_VAL_BOARD(other_tile_idx, board)))
+    unsigned int cur_tile = GET_VAL_BOARD_S(cur_tile_idx, board);
+    if (!(GET_VAL_BOARD_S(other_tile_idx, board)))
     {
         SET_VAL_BOARD(other_tile_idx, cur_tile, board);
         SET_VAL_BOARD(cur_tile_idx, 0, board);
@@ -358,7 +363,7 @@ void move_piece(unsigned int board[4], unsigned int& cur_tile_idx, unsigned int 
 void game_loop(unsigned int board[4], void (*white_player)(unsigned int*, unsigned int*, bool&), void (*black_player)(unsigned int*, unsigned int*, bool&))
 {
     unsigned int move_pos[3];
-    bool game_over = false, whites_turn = false, white_present = false, black_present = false;
+    bool game_over = false, whites_turn = false;
 
     while (!game_over) // main loop
     {
@@ -377,20 +382,7 @@ void game_loop(unsigned int board[4], void (*white_player)(unsigned int*, unsign
         get_move_possibility(board, move_pos, whites_turn);
         if (0 == GET_NUM_OF_MOVES(move_pos)) game_over = true; // end game if noone can move
     }
-    for (unsigned int i = 0; i < 32; ++i)
-    {
-        move_pos[0] = GET_VAL_BOARD(i, board);
-        if (IS_PIECE(move_pos[0]))
-        {
-            if (IS_WHITE(move_pos[0])) white_present = true;
-            if (IS_BLACK(move_pos[0])) black_present = true;
-        }
-    }
-    system("CLS");
-    draw_board(board);
-    if (white_present && black_present) std::cout << std::endl << "Game ended in a draw!" << std::endl << std::endl;
-    else if (white_present) std::cout << std::endl << BG_WHITE_FG_BLACK << "White won!" << BG_BLACK_FG_WHITE << std::endl << std::endl;
-    else if (black_present) std::cout << std::endl << BG_BLACK_FG_WHITE << "Black won!" << std::endl << std::endl;
+    get_end_state(board, whites_turn);
 }
 
 void human_player(unsigned int board[4], unsigned int move_pos[3], bool& whites_turn)
@@ -714,6 +706,33 @@ void translate_idx_to_cords(unsigned int idx, char cords[2])
     else if ((idx & 7) == 7) cords[0] = 'G';
 }
 
+// saves end state in board[0], 0 - error, 1 - black win, 2 - white win, 3 - draw 
+void get_end_state(unsigned int board[4], bool& whites_turn)
+{
+    unsigned int move_pos[3];
+
+    get_move_possibility(board, move_pos, whites_turn);
+    board[0] = 0;
+    for (unsigned int i = 0; i < 32; ++i)
+    {
+        move_pos[0] = GET_VAL_BOARD(i, board);
+        if (IS_PIECE(move_pos[0]))
+        {
+            if (IS_WHITE(move_pos[0])) board[0] |= 2;
+            if (IS_BLACK(move_pos[0])) board[0] |= 1;
+        }
+    }
+}
+
+void disp_end_state(unsigned int* board)
+{
+    system("CLS");
+    draw_board(board);
+    if (board[0] & 2 && board[0] & 1) std::cout << std::endl << "Game ended in a draw!" << std::endl << std::endl;
+    else if (board[0] & 2) std::cout << std::endl << BG_WHITE_FG_BLACK << "White won!" << BG_BLACK_FG_WHITE << std::endl << std::endl;
+    else if (board[0] & 1) std::cout << std::endl << BG_BLACK_FG_WHITE << "Black won!" << std::endl << std::endl;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 int main(int argc, char** argv)
@@ -736,9 +755,9 @@ int main(int argc, char** argv)
         switch (menu_choice)
         {
         case 1:
-            std::cout << std::endl;
             while (!player_chosen)
             {
+                system("CLS");
                 std::cout << "1. Human Player" << std::endl;
                 std::cout << "2. Random Player" << std::endl;
                 std::cout << BG_WHITE_FG_BLACK << "White" << BG_BLACK_FG_WHITE << " Player Choice: ";
@@ -762,6 +781,7 @@ int main(int argc, char** argv)
             player_chosen = false;
             while (!player_chosen)
             {
+                system("CLS");
                 std::cout << "1. Human Player" << std::endl;
                 std::cout << "2. Random Player" << std::endl;
                 std::cout << "Black Player Choice: ";
@@ -786,6 +806,7 @@ int main(int argc, char** argv)
             std::cin.ignore();
             init_board(board);
             game_loop(board, white_player, black_player);
+            disp_end_state(board);
             system("pause");
             system("CLS");
             break;
@@ -1131,8 +1152,8 @@ void test_translate_idx_to_cords()
 //    unsigned int other_tile_idx = get_dir_idx_ptr(cur_tile_idx, board);
 //    if (other_tile_idx == 32) return;
 //
-//    unsigned int cur_tile = GET_VAL_BOARD(cur_tile_idx, board);
-//    unsigned int other_tile = GET_VAL_BOARD(other_tile_idx, board);
+//    unsigned int cur_tile = GET_VAL_BOARD_S(cur_tile_idx, board);
+//    unsigned int other_tile = GET_VAL_BOARD_S(other_tile_idx, board);
 //    if (IS_EMPTY(other_tile))
 //    {
 //        SET_VAL_BOARD(other_tile_idx, cur_tile, board);
@@ -1142,7 +1163,7 @@ void test_translate_idx_to_cords()
 //    else
 //    {
 //        unsigned int other_tile_idx2 = get_dir_idx_ptr(other_tile_idx, board);
-//        if (GET_VAL_BOARD(other_tile_idx2, board)) return;
+//        if (GET_VAL_BOARD_S(other_tile_idx2, board)) return;
 //        SET_VAL_BOARD(other_tile_idx2, cur_tile, board);
 //        SET_VAL_BOARD(other_tile_idx, 0, board);
 //        SET_VAL_BOARD(cur_tile_idx, 0, board);
@@ -1159,11 +1180,11 @@ void test_translate_idx_to_cords()
 //    {
 //        for (unsigned int idx = 0; idx < 32; ++idx)
 //        {
-//            // old - GET_VAL_BOARD(idx, board);
-//            int tmp = GET_VAL_BOARD(idx, board) & 3;
-//            //int tmp = GET_VAL_BOARD(idx, board) << 2;
-//            //int tmp = GET_VAL_BOARD(idx, board) >> 2;
-//            //int tmp = GET_VAL_BOARD(idx, board);
+//            // old - GET_VAL_BOARD_S(idx, board);
+//            int tmp = GET_VAL_BOARD_S(idx, board) & 3;
+//            //int tmp = GET_VAL_BOARD_S(idx, board) << 2;
+//            //int tmp = GET_VAL_BOARD_S(idx, board) >> 2;
+//            //int tmp = GET_VAL_BOARD_S(idx, board);
 //            //int tmp = 16 | 123;
 //        }
 //    }
@@ -1175,19 +1196,19 @@ void test_translate_idx_to_cords()
 //    {
 //        for (unsigned int idx = 0; idx < 32; ++idx)
 //        {
-//            // old - GET_VAL_BOARD2(idx, board);
-//            int tmp = GET_VAL_BOARD(idx, board) % 4;
-//            //int tmp = GET_VAL_BOARD(idx, board) * 4;
-//            //int tmp = GET_VAL_BOARD(idx, board) / 4;
-//            //int tmp = GET_VAL_BOARD(idx, board) / 4;
+//            // old - GET_VAL_BOARD_S2(idx, board);
+//            int tmp = GET_VAL_BOARD_S(idx, board) % 4;
+//            //int tmp = GET_VAL_BOARD_S(idx, board) * 4;
+//            //int tmp = GET_VAL_BOARD_S(idx, board) / 4;
+//            //int tmp = GET_VAL_BOARD_S(idx, board) / 4;
 //            //int tmp = 16 ^ 123;
 //        }
 //    }
 //    finish2 = std::chrono::high_resolution_clock::now();
 //    elapsed2 = (finish2 - start2) / 1000000;
 //
-//    //old - std::cout << "Average time for GET_VAL_BOARD:  " << elapsed.count() << std::endl;
-//    //old - std::cout << "Average time for GET_VAL_BOARD2: " << elapsed2.count() << std::endl << std::endl;
+//    //old - std::cout << "Average time for GET_VAL_BOARD_S:  " << elapsed.count() << std::endl;
+//    //old - std::cout << "Average time for GET_VAL_BOARD_S2: " << elapsed2.count() << std::endl << std::endl;
 //    std::cout << "Average time for & 3:\t" << elapsed.count() << std::endl;
 //    std::cout << "Average time for % 4:\t" << elapsed2.count() << std::endl << std::endl;
 //    //std::cout << "Average time for << 2:\t" << elapsed.count() << std::endl;
