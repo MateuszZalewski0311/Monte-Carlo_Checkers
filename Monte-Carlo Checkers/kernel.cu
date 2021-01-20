@@ -25,7 +25,7 @@
 // 7 - 0111 = white king
 //
 // 8 - 1000 = out of bounds
-// 1xxx in tile_idx = 0 is used to save turn flag - TODO
+// 1xxx in (tile_idx = 0) is used to save turn flag (1 - white, 0 - black)
 //
 // 8 tiles saved in one unsigned int with encoding as above
 // example: 0100 0100 0100 0100 0000 0000 0000 0000
@@ -46,14 +46,16 @@
 #define IS_WHITE(tile) (bool)(tile & 2)
 #define IS_BLACK(tile) (bool)(~tile & 2)
 #define IS_KING(tile) (bool)(tile & 1)
+#define FLIP_TURN_FLAG(board) board[0] ^= 8
+#define GET_TURN_FLAG(board) (bool)(board[0] & 8)
 //////////////////////////////////////////////////////////////////////////////// - move_pos array macros
-#define GET_BEATING_POS_FLAG(move_pos) (bool)(move_pos[2] & 65536)
-#define SET_BEATING_POS_FLAG(move_pos) move_pos[2] |= 65536
-#define GET_MOVE_CHECK_GUARD(move_pos) (bool)(move_pos[2] & 131072)
-#define SET_MOVE_CHECK_GUARD(move_pos) move_pos[2] |= 131072
-#define CLEAR_MOVE_CHECK_GUARD(move_pos) move_pos[2] &= 4294836223
-#define GET_NUM_OF_MOVES(move_pos) move_pos[2] >> 20
-#define SET_NUM_OF_MOVES(move_pos, num_of_moves) move_pos[2] |= num_of_moves << 20
+#define GET_BEATING_POS_FLAG(move_pos) (bool)(move_pos[3] & 1)
+#define SET_BEATING_POS_FLAG(move_pos) move_pos[3] |= 1
+#define GET_MOVE_CHECK_GUARD(move_pos) (bool)(move_pos[3] & 2)
+#define SET_MOVE_CHECK_GUARD(move_pos) move_pos[3] |= 2
+#define CLEAR_MOVE_CHECK_GUARD(move_pos) move_pos[3] &= ~2
+#define GET_NUM_OF_MOVES(move_pos) move_pos[3] >> 2
+#define SET_NUM_OF_MOVES(move_pos, num_of_moves) move_pos[3] |= num_of_moves << 2
 #define GET_VAL_MOVE_POS(idx, move_pos) move_pos[idx >> 2] << 24 - ((idx & 3) << 3) >> 24
 #define SET_VAL_MOVE_POS(idx, val, move_pos) move_pos[idx >> 2] |= val << ((idx & 3) << 3)
 #define GET_PIECE_DIR_FLAG(dir, move_pos) (bool)((move_pos[2] << 30 - (dir << 1) >> 30) & 1)
@@ -63,21 +65,22 @@
 ////////////////////////////////////////////////////////////////////////////////
 void init_board(unsigned int board[4]);
 void draw_board(unsigned int board[4]);
-unsigned int get_left_upper_idx(unsigned int& cur_tile_idx, unsigned int board[4]);
-unsigned int get_right_upper_idx(unsigned int& cur_tile_idx, unsigned int board[4]);
-unsigned int get_left_lower_idx(unsigned int& cur_tile_idx, unsigned int board[4]);
-unsigned int get_right_lower_idx(unsigned int& cur_tile_idx, unsigned int board[4]);
-void get_move_possibility_loop_fun(unsigned int board[4], unsigned int move_pos[3], unsigned int& cur_idx, unsigned int& moves_idx, bool& whites_turn);
-void get_move_possibility(unsigned int board[4], unsigned int move_pos[3], bool whites_turn);
+unsigned int get_left_upper_idx(unsigned int& cur_tile_idx);
+unsigned int get_right_upper_idx(unsigned int& cur_tile_idx);
+unsigned int get_left_lower_idx(unsigned int& cur_tile_idx);
+unsigned int get_right_lower_idx(unsigned int& cur_tile_idx);
+void get_move_possibility_loop_fun(unsigned int board[4], unsigned int move_pos[4], unsigned int& cur_idx, unsigned int& moves_idx);
+void get_move_possibility(unsigned int board[4], unsigned int move_pos[4]);
 ////////////////////////////////////////////////////////////////////////////////
-void get_piece_move_pos(unsigned int board[4], unsigned int move_pos[3], unsigned int& idx);
-void move_piece(unsigned int board[4], unsigned int& cur_tile_idx, unsigned int (*get_dir_idx_ptr)(unsigned int&, unsigned int*));
+void get_piece_move_pos(unsigned int board[4], unsigned int move_pos[4], unsigned int& idx);
+void move_piece(unsigned int board[4], unsigned int& cur_tile_idx, unsigned int (*get_dir_idx_ptr)(unsigned int&));
 ////////////////////////////////////////////////////////////////////////////////
-void game_loop(unsigned int board[4], void (*white_player)(unsigned int*, unsigned int*, bool&), void (*black_player)(unsigned int*, unsigned int*, bool&));
-void human_player(unsigned int board[4], unsigned int move_pos[3], bool& whites_turn);
+void game_loop(unsigned int board[4], void (*white_player)(unsigned int*, unsigned int*), void (*black_player)(unsigned int*, unsigned int*));
+void human_player(unsigned int board[4], unsigned int move_pos[4]);
+void random_player(unsigned int board[4], unsigned int move_pos[4]);
 ////////////////////////////////////////////////////////////////////////////////
-void disp_moveable_pieces(unsigned int board[4], unsigned int move_possibility[3], bool whites_turn);
-void disp_possible_dirs(unsigned int board[4], unsigned int move_pos[3], unsigned int& idx);
+void disp_moveable_pieces(unsigned int board[4], unsigned int move_pos[4]);
+void disp_possible_dirs(unsigned int board[4], unsigned int move_pos[4], unsigned int& idx);
 void get_cords_from_console(char cords[2]);
 unsigned int translate_cords_to_idx(const char cords[2]);
 void translate_idx_to_cords(unsigned int idx, char cords[2]);
@@ -86,10 +89,10 @@ void disp_end_state(unsigned int* board);
 ////////////////////////////////////////////////////////////////////////////////
 void testing_function();
 void test_get_idx_funs(unsigned int board[4]);
-void test_get_move_possibility(unsigned int board[4], unsigned int move_possibility[3], bool whites_turn);
+void test_get_move_possibility(unsigned int board[4], unsigned int move_pos[4]);
 void test_get_move_possibility_board_init(unsigned int board[4], unsigned int test_choice);
 void test_get_move_possibility_init_loop(unsigned int board[4], int lower_bound = 1, int upper_bound = 7);
-void test_get_piece_move_pos(unsigned int board[4], unsigned int move_pos[3], unsigned int idx, unsigned int test_choice);
+void test_get_piece_move_pos(unsigned int board[4], unsigned int move_pos[4], unsigned int idx, unsigned int test_choice);
 void test_translate_cords_to_idx();
 void test_translate_idx_to_cords();
 //void bench(unsigned int board[4]);
@@ -146,7 +149,7 @@ void draw_board(unsigned int board[4])
 
 ////////////////////////////////////////////////////////////////////////////////
 
-unsigned int get_left_upper_idx(unsigned int& cur_tile_idx, unsigned int board[4])
+unsigned int get_left_upper_idx(unsigned int& cur_tile_idx)
 {
     if (cur_tile_idx > 31 || !(cur_tile_idx >> 2)) return 32; // second condition is top row
     if (cur_tile_idx & 4) // even row (counting from 1)
@@ -161,7 +164,7 @@ unsigned int get_left_upper_idx(unsigned int& cur_tile_idx, unsigned int board[4
     }
 }
 
-unsigned int get_right_upper_idx(unsigned int& cur_tile_idx, unsigned int board[4])
+unsigned int get_right_upper_idx(unsigned int& cur_tile_idx)
 {
     if (cur_tile_idx > 31 || !(cur_tile_idx >> 2)) return 32; // second cond chcks if top row
     if (cur_tile_idx & 4) // even row (counting from 1)
@@ -176,7 +179,7 @@ unsigned int get_right_upper_idx(unsigned int& cur_tile_idx, unsigned int board[
     }
 }
 
-unsigned int get_left_lower_idx(unsigned int& cur_tile_idx, unsigned int board[4])
+unsigned int get_left_lower_idx(unsigned int& cur_tile_idx)
 {
     if (cur_tile_idx > 31 || (cur_tile_idx >> 2) == 7) return 32; // second cond chcks if bottom row
     if (cur_tile_idx & 4) // even row (counting from 1)
@@ -191,7 +194,7 @@ unsigned int get_left_lower_idx(unsigned int& cur_tile_idx, unsigned int board[4
     }
 }
 
-unsigned int get_right_lower_idx(unsigned int& cur_tile_idx, unsigned int board[4])
+unsigned int get_right_lower_idx(unsigned int& cur_tile_idx)
 {
     if(cur_tile_idx > 31 || (cur_tile_idx >> 2) == 7) return 32; // second cond chcks if bottom row
     if (cur_tile_idx & 4) // even row (counting from 1)
@@ -206,16 +209,16 @@ unsigned int get_right_lower_idx(unsigned int& cur_tile_idx, unsigned int board[
     }
 }
 
-void get_move_possibility_loop_fun(unsigned int board[4], unsigned int move_pos[3], unsigned int& cur_idx, unsigned int& moves_idx, bool& whites_turn)
+void get_move_possibility_loop_fun(unsigned int board[4], unsigned int move_pos[4], unsigned int& cur_idx, unsigned int& moves_idx)
 {
     unsigned int tile, tmp_idx, result;
     tile = GET_VAL_BOARD(cur_idx, board);
-    if (IS_PIECE(tile) && (whites_turn == IS_WHITE(tile)))
+    if (IS_PIECE(tile) && (GET_TURN_FLAG(board) == IS_WHITE(tile)))
     {
-        unsigned int (*get_dir_idx_ptr)(unsigned int&, unsigned int*);
+        unsigned int (*get_dir_idx_ptr)(unsigned int&);
         for (unsigned int direction = 0; direction < 4; ++direction)
         {
-            if (whites_turn == (bool)(direction & 2) && !IS_KING(tile)) // do not check backwards movement
+            if (GET_TURN_FLAG(board) == (bool)(direction & 2) && !IS_KING(tile)) // do not check backwards movement
                 continue;
             switch (direction)
             {
@@ -233,18 +236,18 @@ void get_move_possibility_loop_fun(unsigned int board[4], unsigned int move_pos[
                 break;
             default: return;
             }
-            tmp_idx = get_dir_idx_ptr(cur_idx, board);
+            tmp_idx = get_dir_idx_ptr(cur_idx);
             result = GET_VAL_BOARD_S(tmp_idx, board);
-            if (whites_turn != IS_WHITE(result) && IS_PIECE(result)) // IS_PIECE = out of bounds guard
+            if (GET_TURN_FLAG(board) != IS_WHITE(result) && IS_PIECE(result)) // IS_PIECE = out of bounds guard
             {
-                tmp_idx = get_dir_idx_ptr(tmp_idx, board);
+                tmp_idx = get_dir_idx_ptr(tmp_idx);
                 result = GET_VAL_BOARD_S(tmp_idx, board);
                 if (IS_EMPTY(result))
                 {
                     if (!GET_BEATING_POS_FLAG(move_pos)) 
                     {
                         moves_idx = 0;
-                        move_pos[0] = move_pos[1] = move_pos[2] = 0;
+                        move_pos[0] = move_pos[1] = move_pos[2] = move_pos[3] = 0;
                         SET_BEATING_POS_FLAG(move_pos);
                     }
                     SET_VAL_MOVE_POS(moves_idx, cur_idx, move_pos);
@@ -267,12 +270,12 @@ void get_move_possibility_loop_fun(unsigned int board[4], unsigned int move_pos[
 
 // Index of tile that can be moved is stored similarly as board representation, but in 8 bits instead of 4 bits
 // Additionally some space in move_pos[2] is used for flags and saving number of indexes in the whole array
-void get_move_possibility(unsigned int board[4], unsigned int move_pos[3], bool whites_turn)
+void get_move_possibility(unsigned int board[4], unsigned int move_pos[4])
 {
     unsigned int moves_idx = 0;
-    move_pos[0] = move_pos[1] = move_pos[2] = 0;
+    move_pos[0] = move_pos[1] = move_pos[2] = move_pos[3] = 0;
     for (unsigned int i = 0; i < 32; ++i)
-        get_move_possibility_loop_fun(board, move_pos, i, moves_idx, whites_turn);
+        get_move_possibility_loop_fun(board, move_pos, i, moves_idx);
     SET_NUM_OF_MOVES(move_pos, moves_idx); // record number of possible moves
 }
 
@@ -280,15 +283,15 @@ void get_move_possibility(unsigned int board[4], unsigned int move_pos[3], bool 
 
 // Index of tile that can be moved is stored similarly as board representation, but in 8 bits instead of 2 bits
 // move_pos[2] is used for storing, the same spots as in get_move_possibility are used for beating available flag and number of indexes saved
-void get_piece_move_pos(unsigned int board[4], unsigned int move_pos[3], unsigned int& idx)
+void get_piece_move_pos(unsigned int board[4], unsigned int move_pos[4], unsigned int& idx)
 {
     unsigned int tile, tmp_idx, result, move_counter = 0;
-    move_pos[2] = 0;
+    move_pos[2] = move_pos[3] = 0;
     
     tile = GET_VAL_BOARD_S(idx, board);
     if (IS_PIECE(tile))
     {
-        unsigned int (*get_dir_idx_ptr)(unsigned int&, unsigned int*);
+        unsigned int (*get_dir_idx_ptr)(unsigned int&);
         for (unsigned int direction = 0; direction < 4; ++direction)
         {
             if (IS_WHITE(tile) == (bool)(direction & 2) && !IS_KING(tile)) // do not check backwards movement
@@ -309,11 +312,11 @@ void get_piece_move_pos(unsigned int board[4], unsigned int move_pos[3], unsigne
                 break;
             default: return;
             }
-            tmp_idx = get_dir_idx_ptr(idx, board);
+            tmp_idx = get_dir_idx_ptr(idx);
             result = GET_VAL_BOARD_S(tmp_idx, board);
             if (IS_WHITE(tile) != IS_WHITE(result) && IS_PIECE(result)) // IS_PIECE = out of bounds guard
             {
-                tmp_idx = get_dir_idx_ptr(tmp_idx, board);
+                tmp_idx = get_dir_idx_ptr(tmp_idx);
                 result = GET_VAL_BOARD_S(tmp_idx, board);
                 if (IS_EMPTY(result))
                 {
@@ -335,11 +338,11 @@ void get_piece_move_pos(unsigned int board[4], unsigned int move_pos[3], unsigne
     SET_NUM_OF_MOVES(move_pos, move_counter);
 }
 
-void move_piece(unsigned int board[4], unsigned int& cur_tile_idx, unsigned int (*get_dir_idx_ptr)(unsigned int&, unsigned int*))
+void move_piece(unsigned int board[4], unsigned int& cur_tile_idx, unsigned int (*get_dir_idx_ptr)(unsigned int&))
 {
     if (cur_tile_idx > 31) return;
     
-    unsigned int other_tile_idx = get_dir_idx_ptr(cur_tile_idx, board);
+    unsigned int other_tile_idx = get_dir_idx_ptr(cur_tile_idx);
     if (other_tile_idx == 32) return;
     
     unsigned int cur_tile = GET_VAL_BOARD(cur_tile_idx, board);
@@ -352,7 +355,7 @@ void move_piece(unsigned int board[4], unsigned int& cur_tile_idx, unsigned int 
     {
         SET_VAL_BOARD(other_tile_idx, 0, board);
         SET_VAL_BOARD(cur_tile_idx, 0, board);
-        other_tile_idx = get_dir_idx_ptr(other_tile_idx, board);
+        other_tile_idx = get_dir_idx_ptr(other_tile_idx);
         SET_VAL_BOARD(other_tile_idx, cur_tile, board);
     }
     if ((!IS_KING(cur_tile)) && ((IS_WHITE(cur_tile) && other_tile_idx < 4) || (IS_BLACK(cur_tile) && other_tile_idx > 27)))
@@ -361,51 +364,48 @@ void move_piece(unsigned int board[4], unsigned int& cur_tile_idx, unsigned int 
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void game_loop(unsigned int board[4], void (*white_player)(unsigned int*, unsigned int*, bool&), void (*black_player)(unsigned int*, unsigned int*, bool&))
+void game_loop(unsigned int board[4], void (*white_player)(unsigned int*, unsigned int*), void (*black_player)(unsigned int*, unsigned int*))
 {
-    unsigned int move_pos[3];
-    bool game_over = false, whites_turn = false;
+    unsigned int move_pos[4];
+    bool game_over = false;
 
     while (!game_over) // main loop
     {
         system("CLS");
         draw_board(board);
-        std::cout << std::endl << (whites_turn ? BG_WHITE_FG_BLACK : BG_BLACK_FG_WHITE) << (whites_turn ? "White" : "Black") << "'s turn!" << BG_BLACK_FG_WHITE << std::endl << std::endl;
+        std::cout << std::endl << (GET_TURN_FLAG(board) ? BG_WHITE_FG_BLACK : BG_BLACK_FG_WHITE) << (GET_TURN_FLAG(board) ? "White" : "Black") << "'s turn!" << BG_BLACK_FG_WHITE << std::endl << std::endl;
         //system("pause");
-        if (whites_turn)
-        {
-            white_player(board, move_pos, whites_turn);
-        }
+
+        if (GET_TURN_FLAG(board))
+            white_player(board, move_pos);
         else
-        {
-            black_player(board, move_pos, whites_turn);
-        }
-        get_move_possibility(board, move_pos, whites_turn);
-        if (0 == GET_NUM_OF_MOVES(move_pos)) game_over = true; // end game if noone can move
+            black_player(board, move_pos);
+
+        get_move_possibility(board, move_pos);
+        if (0 == (GET_NUM_OF_MOVES(move_pos))) game_over = true; // end game if noone can move
     }
-    board[0] |= 8;
 }
 
-void human_player(unsigned int board[4], unsigned int move_pos[3], bool& whites_turn)
+void human_player(unsigned int board[4], unsigned int move_pos[4])
 {
     unsigned int choosen_idx1, choosen_idx2, dir;
     char cords[2];
     bool board_beating_flag, beating_sequence_in_progress = false;
 
-    auto redraw_beginning = [board, &whites_turn]()
+    auto redraw_beginning = [board]()
     {
         system("CLS");
         draw_board(board);
-        std::cout << std::endl << (whites_turn ? BG_WHITE_FG_BLACK : BG_BLACK_FG_WHITE) << (whites_turn ? "White" : "Black") << "'s turn!" << BG_BLACK_FG_WHITE << std::endl << std::endl;
+        std::cout << std::endl << (GET_TURN_FLAG(board) ? BG_WHITE_FG_BLACK : BG_BLACK_FG_WHITE) << (GET_TURN_FLAG(board) ? "White" : "Black") << "'s turn!" << BG_BLACK_FG_WHITE << std::endl << std::endl;
     };
-    auto redraw_first_stage = [board, move_pos, &whites_turn, redraw_beginning]()
+    auto redraw_first_stage = [board, move_pos, redraw_beginning]()
     {
         redraw_beginning();
-        get_move_possibility(board, move_pos, whites_turn);
-        disp_moveable_pieces(board, move_pos, whites_turn);
+        get_move_possibility(board, move_pos);
+        disp_moveable_pieces(board, move_pos);
         std::cout << std::endl;
     };
-    auto redraw_second_stage = [board, move_pos, &whites_turn, &choosen_idx1, redraw_beginning]()
+    auto redraw_second_stage = [board, move_pos, &choosen_idx1, redraw_beginning]()
     {
         redraw_beginning();
         get_piece_move_pos(board, move_pos, choosen_idx1);
@@ -443,7 +443,7 @@ void human_player(unsigned int board[4], unsigned int move_pos[3], bool& whites_
         get_cords_from_console(cords);
         choosen_idx2 = translate_cords_to_idx(cords);
 
-        unsigned int (*get_dir_idx_ptr)(unsigned int&, unsigned int*);
+        unsigned int (*get_dir_idx_ptr)(unsigned int&);
         for (dir = 0; dir < 4; ++dir)
         {
             if (dir < 2 && choosen_idx2 > choosen_idx1) continue;
@@ -463,19 +463,25 @@ void human_player(unsigned int board[4], unsigned int move_pos[3], bool& whites_
                 break;
             default: goto human_player_reset;
             }
-            if (choosen_idx2 != get_dir_idx_ptr(choosen_idx1, board)) continue;
+            if (choosen_idx2 != get_dir_idx_ptr(choosen_idx1)) continue;
 
-            if ((GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_BEATING_FLAG(dir, move_pos)) || (!GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_DIR_FLAG(dir, move_pos)))
+            if (GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_BEATING_FLAG(dir, move_pos))
             {
                 board_beating_flag = IS_KING((GET_VAL_BOARD(choosen_idx1, board))); //memory recycling - dont mind the name
                 move_piece(board, choosen_idx1, get_dir_idx_ptr);
-                choosen_idx1 = get_dir_idx_ptr(choosen_idx2, board);
+                choosen_idx1 = get_dir_idx_ptr(choosen_idx2);
                 if (board_beating_flag != (IS_KING((GET_VAL_BOARD(choosen_idx1, board)))))
                 {
-                    whites_turn = !whites_turn;
+                    FLIP_TURN_FLAG(board);
                     return;
                 }
                 break;
+            }
+            else if (!GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_DIR_FLAG(dir, move_pos))
+            {
+                move_piece(board, choosen_idx1, get_dir_idx_ptr);
+                FLIP_TURN_FLAG(board);
+                return;
             }
             std::cout << std::endl << "Impossible move!" << std::endl << "Please choose a different move!" << std::endl << std::endl;
             system("pause");
@@ -489,25 +495,25 @@ void human_player(unsigned int board[4], unsigned int move_pos[3], bool& whites_
             if (beating_sequence_in_progress) continue;
             goto human_player_reset; // reset move choice
         }
-        if (choosen_idx1 == 32 || !GET_BEATING_POS_FLAG(move_pos)) break; // check if last move was beating
         get_piece_move_pos(board, move_pos, choosen_idx1);
         if (!GET_BEATING_POS_FLAG(move_pos)) break; // check if more beatings in sequence
         beating_sequence_in_progress = true;
     }
-    whites_turn = !whites_turn;
+    FLIP_TURN_FLAG(board);
 }
 
-void random_player(unsigned int board[4], unsigned int move_pos[3], bool& whites_turn)
+void random_player(unsigned int board[4], unsigned int move_pos[4])
 {
     std::random_device rd;
     std::mt19937 gen(rd());
-    std::uniform_int_distribution<> dist;
+    std::uniform_int_distribution<> dist(0, 0);
     unsigned int choosen_idx1, choosen_idx2, dir = 0, dir_idx_upper_bound, dir_idx_counter = 0;
     bool beating_sequence_in_progress = false, tmp;
-    unsigned int (*get_dir_idx_ptr)(unsigned int&, unsigned int*);
+    unsigned int (*get_dir_idx_ptr)(unsigned int&);
 
-    get_move_possibility(board, move_pos, whites_turn);
-    dist = std::uniform_int_distribution<>(0, (GET_NUM_OF_MOVES(move_pos)) - 1);
+    get_move_possibility(board, move_pos);
+    dir_idx_upper_bound = (GET_NUM_OF_MOVES(move_pos)) - 1;
+    dist = std::uniform_int_distribution<>(0, dir_idx_upper_bound);
     choosen_idx1 = dist(gen);
     choosen_idx1 = GET_VAL_MOVE_POS(choosen_idx1, move_pos);
     do 
@@ -542,45 +548,50 @@ void random_player(unsigned int board[4], unsigned int move_pos[3], bool& whites
             }
             else continue;
             
-            if ((GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_BEATING_FLAG(dir, move_pos)) || (!GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_DIR_FLAG(dir, move_pos)))
+            if (GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_BEATING_FLAG(dir, move_pos))
             {
                 tmp = IS_KING((GET_VAL_BOARD(choosen_idx1, board))); // for promotion check
-                choosen_idx2 = get_dir_idx_ptr(choosen_idx1, board);
+                choosen_idx2 = get_dir_idx_ptr(choosen_idx1);
                 move_piece(board, choosen_idx1, get_dir_idx_ptr);
-                choosen_idx1 = get_dir_idx_ptr(choosen_idx2, board);
+                choosen_idx1 = get_dir_idx_ptr(choosen_idx2);
                 if (tmp != (IS_KING((GET_VAL_BOARD(choosen_idx1, board)))))
                 {
-                    whites_turn = !whites_turn;
+                    FLIP_TURN_FLAG(board);
                     return;
                 }
                 break;
             }
+            else if (!GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_DIR_FLAG(dir, move_pos))
+            {
+                move_piece(board, choosen_idx1, get_dir_idx_ptr);
+                FLIP_TURN_FLAG(board);
+                return;
+            }
         }
         if (dir == 4) return;
-        if (choosen_idx1 == 32 || !GET_BEATING_POS_FLAG(move_pos)) break; // check if last move was beating
         get_piece_move_pos(board, move_pos, choosen_idx1);
         if (!GET_BEATING_POS_FLAG(move_pos)) break; // check if more beatings in sequence
         beating_sequence_in_progress = true;
     } while (beating_sequence_in_progress);
-    whites_turn = !whites_turn;
+    FLIP_TURN_FLAG(board);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void disp_moveable_pieces(unsigned int board[4], unsigned int move_possibility[3], bool whites_turn)
+void disp_moveable_pieces(unsigned int board[4], unsigned int move_pos[4])
 {
     char cords[2]{'-'};
-    std::cout << "Possible moves for " << (whites_turn ? "white" : "black") << " - " << (GET_NUM_OF_MOVES(move_possibility)) << std::endl;
+    std::cout << "Possible moves for " << (GET_TURN_FLAG(board) ? "white" : "black") << " - " << (GET_NUM_OF_MOVES(move_pos)) << std::endl;
     std::cout << "Tiles with moveable pieces: ";
-    for (unsigned int i = 0; i < GET_NUM_OF_MOVES(move_possibility); ++i)
+    for (unsigned int i = 0; i < GET_NUM_OF_MOVES(move_pos); ++i)
     {
-        translate_idx_to_cords((GET_VAL_MOVE_POS(i, move_possibility)), cords);
+        translate_idx_to_cords((GET_VAL_MOVE_POS(i, move_pos)), cords);
         std::cout << cords[0] << cords[1] << ' ';
     }
     std::cout << std::endl;
 }
 
-void disp_possible_dirs(unsigned int board[4], unsigned int move_pos[3], unsigned int& idx)
+void disp_possible_dirs(unsigned int board[4], unsigned int move_pos[4], unsigned int& idx)
 {
     char cords[2]{'-'};
     translate_idx_to_cords(idx, cords);
@@ -591,7 +602,7 @@ void disp_possible_dirs(unsigned int board[4], unsigned int move_pos[3], unsigne
         std::cout << "Moves possible for piece on " << cords[0] << cords[1] << " - " << (GET_NUM_OF_MOVES(move_pos)) << std::endl;
         if (GET_BEATING_POS_FLAG(move_pos)) std::cout << "BEATING POSSIBLE!" << std::endl;
         std::cout << "List of tiles to choose from: ";
-        unsigned int (*get_dir_idx_ptr)(unsigned int&, unsigned int*);
+        unsigned int (*get_dir_idx_ptr)(unsigned int&);
         for (unsigned int dir = 0; dir < 4; ++dir)
         {
             switch (dir)
@@ -610,7 +621,7 @@ void disp_possible_dirs(unsigned int board[4], unsigned int move_pos[3], unsigne
                 break;
             default: break;
             }
-            translate_idx_to_cords(get_dir_idx_ptr(idx, board), cords);
+            translate_idx_to_cords(get_dir_idx_ptr(idx), cords);
             if (GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_BEATING_FLAG(dir, move_pos)) std::cout << cords[0] << cords[1] << ' ';
             else if (!GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_DIR_FLAG(dir, move_pos)) std::cout << cords[0] << cords[1] << ' ';
         }
@@ -702,19 +713,21 @@ void translate_idx_to_cords(unsigned int idx, char cords[2])
 // saves end state in board[0], 0 - error, 1 - black win, 2 - white win, 3 - draw 
 void get_end_state(unsigned int board[4])
 {
-    unsigned int move_pos[3];
+    unsigned int move_pos[4];
     
-    get_move_possibility(board, move_pos, (board[0] & 8));
-    board[0] = 0;
+    get_move_possibility(board, move_pos);
     for (unsigned int i = 0; i < 32; ++i)
     {
         move_pos[0] = GET_VAL_BOARD(i, board);
         if (IS_PIECE(move_pos[0]))
         {
-            if (IS_WHITE(move_pos[0])) board[0] |= 2;
-            if (IS_BLACK(move_pos[0])) board[0] |= 1;
+            if (IS_WHITE(move_pos[0])) board[1] |= 128;
+            if (IS_BLACK(move_pos[0])) board[1] |= 8;
         }
     }
+    board[0] = 0;
+    if (board[1] & 128) board[0] |= 2;
+    if (board[1] & 8) board[0] |= 1;
 }
 
 void disp_end_state(unsigned int* board)
@@ -724,7 +737,8 @@ void disp_end_state(unsigned int* board)
     get_end_state(board);
     if (board[0] & 2 && board[0] & 1) std::cout << std::endl << "Game ended in a draw!" << std::endl << std::endl;
     else if (board[0] & 2) std::cout << std::endl << BG_WHITE_FG_BLACK << "White won!" << BG_BLACK_FG_WHITE << std::endl << std::endl;
-    else if (board[0] & 1) std::cout << std::endl << BG_BLACK_FG_WHITE << "Black won!" << std::endl << std::endl;
+    else if (board[0] & 1) std::cout << std::endl << "Black won!" << std::endl << std::endl;
+    else if (!board[0]) std::cout << std::endl << "Error occured!" << std::endl << std::endl;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -735,8 +749,8 @@ int main(int argc, char** argv)
 
     unsigned short menu_choice = 0;
     bool player_chosen = false;
-    void (*white_player)(unsigned int*, unsigned int*, bool&);
-    void (*black_player)(unsigned int*, unsigned int*, bool&);
+    void (*white_player)(unsigned int*, unsigned int*);
+    void (*black_player)(unsigned int*, unsigned int*);
 
     std::cout << BG_WHITE_FG_BLACK << BG_BLACK_FG_WHITE;
     system("cls");
@@ -816,7 +830,7 @@ int main(int argc, char** argv)
 
     //init_board(board);
     //game_loop(board, &random_player, &random_player);
-    //unsigned int game_count = 1000;
+    //unsigned int game_count = 1000000;
     //std::chrono::steady_clock::time_point start, finish;
     //std::chrono::duration<double> elapsed;
     //
@@ -825,6 +839,8 @@ int main(int argc, char** argv)
     //{
     //    init_board(board);
     //    game_loop(board, &random_player, &random_player);
+    //    get_end_state(board);
+    //    //disp_end_state(board);
     //}
     //finish = std::chrono::high_resolution_clock::now();
     //elapsed = (finish - start);
@@ -845,11 +861,10 @@ void testing_function()
 
     unsigned int move_possibility[3]{};
 
-    bool whites_turn = true;
-    test_get_move_possibility(board, move_possibility, whites_turn);
+    test_get_move_possibility(board, move_possibility);
 
-    whites_turn = false;
-    test_get_move_possibility(board, move_possibility, whites_turn);
+    FLIP_TURN_FLAG(board);
+    test_get_move_possibility(board, move_possibility);
     std::cout << std::endl;
 
     std::cout << std::endl;
@@ -867,101 +882,101 @@ void test_get_idx_funs(unsigned int board[4])
 {
     //test top
     unsigned int tmp = 0;
-    std::cout << (32 == get_left_upper_idx(tmp, board)) << ": " << "Left upper to " << tmp << ": " << get_left_upper_idx(tmp, board);
-    std::cout << std::endl << (32 == get_right_upper_idx(tmp, board)) << ": " << "Right upper to " << tmp << ": " << get_right_upper_idx(tmp, board);
-    std::cout << std::endl << (4 == get_left_lower_idx(tmp, board)) << ": " << "Left lower to " << tmp << ": " << get_left_lower_idx(tmp, board);
-    std::cout << std::endl << (5 == get_right_lower_idx(tmp, board)) << ": " << "Right lower to " << tmp << ": " << get_right_lower_idx(tmp, board);
+    std::cout << (32 == get_left_upper_idx(tmp)) << ": " << "Left upper to " << tmp << ": " << get_left_upper_idx(tmp);
+    std::cout << std::endl << (32 == get_right_upper_idx(tmp)) << ": " << "Right upper to " << tmp << ": " << get_right_upper_idx(tmp);
+    std::cout << std::endl << (4 == get_left_lower_idx(tmp)) << ": " << "Left lower to " << tmp << ": " << get_left_lower_idx(tmp);
+    std::cout << std::endl << (5 == get_right_lower_idx(tmp)) << ": " << "Right lower to " << tmp << ": " << get_right_lower_idx(tmp);
     std::cout << std::endl;
 
     tmp = 1;
-    std::cout << std::endl << (32 == get_left_upper_idx(tmp, board)) << ": " << "Left upper to " << tmp << ": " << get_left_upper_idx(tmp, board);
-    std::cout << std::endl << (32 == get_right_upper_idx(tmp, board)) << ": " << "Right upper to " << tmp << ": " << get_right_upper_idx(tmp, board);
-    std::cout << std::endl << (5 == get_left_lower_idx(tmp, board)) << ": " << "Left lower to " << tmp << ": " << get_left_lower_idx(tmp, board);
-    std::cout << std::endl << (6 == get_right_lower_idx(tmp, board)) << ": " << "Right lower to " << tmp << ": " << get_right_lower_idx(tmp, board);
+    std::cout << std::endl << (32 == get_left_upper_idx(tmp)) << ": " << "Left upper to " << tmp << ": " << get_left_upper_idx(tmp);
+    std::cout << std::endl << (32 == get_right_upper_idx(tmp)) << ": " << "Right upper to " << tmp << ": " << get_right_upper_idx(tmp);
+    std::cout << std::endl << (5 == get_left_lower_idx(tmp)) << ": " << "Left lower to " << tmp << ": " << get_left_lower_idx(tmp);
+    std::cout << std::endl << (6 == get_right_lower_idx(tmp)) << ": " << "Right lower to " << tmp << ": " << get_right_lower_idx(tmp);
     std::cout << std::endl;
 
     tmp = 3;
-    std::cout << std::endl << (32 == get_left_upper_idx(tmp, board)) << ": " << "Left upper to " << tmp << ": " << get_left_upper_idx(tmp, board);
-    std::cout << std::endl << (32 == get_right_upper_idx(tmp, board)) << ": " << "Right upper to " << tmp << ": " << get_right_upper_idx(tmp, board);
-    std::cout << std::endl << (7 == get_left_lower_idx(tmp, board)) << ": " << "Left lower to " << tmp << ": " << get_left_lower_idx(tmp, board);
-    std::cout << std::endl << (32 == get_right_lower_idx(tmp, board)) << ": " << "Right lower to " << tmp << ": " << get_right_lower_idx(tmp, board);
+    std::cout << std::endl << (32 == get_left_upper_idx(tmp)) << ": " << "Left upper to " << tmp << ": " << get_left_upper_idx(tmp);
+    std::cout << std::endl << (32 == get_right_upper_idx(tmp)) << ": " << "Right upper to " << tmp << ": " << get_right_upper_idx(tmp);
+    std::cout << std::endl << (7 == get_left_lower_idx(tmp)) << ": " << "Left lower to " << tmp << ": " << get_left_lower_idx(tmp);
+    std::cout << std::endl << (32 == get_right_lower_idx(tmp)) << ": " << "Right lower to " << tmp << ": " << get_right_lower_idx(tmp);
     std::cout << std::endl;
 
     // test even
     tmp = 4;
-    std::cout << std::endl << (32 == get_left_upper_idx(tmp, board)) << ": " << "Left upper to " << tmp << ": " << get_left_upper_idx(tmp, board);
-    std::cout << std::endl << (0 == get_right_upper_idx(tmp, board)) << ": " << "Right upper to " << tmp << ": " << get_right_upper_idx(tmp, board);
-    std::cout << std::endl << (32 == get_left_lower_idx(tmp, board)) << ": " << "Left lower to " << tmp << ": " << get_left_lower_idx(tmp, board);
-    std::cout << std::endl << (8 == get_right_lower_idx(tmp, board)) << ": " << "Right lower to " << tmp << ": " << get_right_lower_idx(tmp, board);
+    std::cout << std::endl << (32 == get_left_upper_idx(tmp)) << ": " << "Left upper to " << tmp << ": " << get_left_upper_idx(tmp);
+    std::cout << std::endl << (0 == get_right_upper_idx(tmp)) << ": " << "Right upper to " << tmp << ": " << get_right_upper_idx(tmp);
+    std::cout << std::endl << (32 == get_left_lower_idx(tmp)) << ": " << "Left lower to " << tmp << ": " << get_left_lower_idx(tmp);
+    std::cout << std::endl << (8 == get_right_lower_idx(tmp)) << ": " << "Right lower to " << tmp << ": " << get_right_lower_idx(tmp);
     std::cout << std::endl;
 
     tmp = 5;
-    std::cout << std::endl << (0 == get_left_upper_idx(tmp, board)) << ": " << "Left upper to " << tmp << ": " << get_left_upper_idx(tmp, board);
-    std::cout << std::endl << (1 == get_right_upper_idx(tmp, board)) << ": " << "Right upper to " << tmp << ": " << get_right_upper_idx(tmp, board);
-    std::cout << std::endl << (8 == get_left_lower_idx(tmp, board)) << ": " << "Left lower to " << tmp << ": " << get_left_lower_idx(tmp, board);
-    std::cout << std::endl << (9 == get_right_lower_idx(tmp, board)) << ": " << "Right lower to " << tmp << ": " << get_right_lower_idx(tmp, board);
+    std::cout << std::endl << (0 == get_left_upper_idx(tmp)) << ": " << "Left upper to " << tmp << ": " << get_left_upper_idx(tmp);
+    std::cout << std::endl << (1 == get_right_upper_idx(tmp)) << ": " << "Right upper to " << tmp << ": " << get_right_upper_idx(tmp);
+    std::cout << std::endl << (8 == get_left_lower_idx(tmp)) << ": " << "Left lower to " << tmp << ": " << get_left_lower_idx(tmp);
+    std::cout << std::endl << (9 == get_right_lower_idx(tmp)) << ": " << "Right lower to " << tmp << ": " << get_right_lower_idx(tmp);
     std::cout << std::endl;
 
     tmp = 7;
-    std::cout << std::endl << (2 == get_left_upper_idx(tmp, board)) << ": " << "Left upper to " << tmp << ": " << get_left_upper_idx(tmp, board);
-    std::cout << std::endl << (3 == get_right_upper_idx(tmp, board)) << ": " << "Right upper to " << tmp << ": " << get_right_upper_idx(tmp, board);
-    std::cout << std::endl << (10 == get_left_lower_idx(tmp, board)) << ": " << "Left lower to " << tmp << ": " << get_left_lower_idx(tmp, board);
-    std::cout << std::endl << (11 == get_right_lower_idx(tmp, board)) << ": " << "Right lower to " << tmp << ": " << get_right_lower_idx(tmp, board);
+    std::cout << std::endl << (2 == get_left_upper_idx(tmp)) << ": " << "Left upper to " << tmp << ": " << get_left_upper_idx(tmp);
+    std::cout << std::endl << (3 == get_right_upper_idx(tmp)) << ": " << "Right upper to " << tmp << ": " << get_right_upper_idx(tmp);
+    std::cout << std::endl << (10 == get_left_lower_idx(tmp)) << ": " << "Left lower to " << tmp << ": " << get_left_lower_idx(tmp);
+    std::cout << std::endl << (11 == get_right_lower_idx(tmp)) << ": " << "Right lower to " << tmp << ": " << get_right_lower_idx(tmp);
     std::cout << std::endl;
 
     //test odd
     tmp = 8;
-    std::cout << std::endl << (4 == get_left_upper_idx(tmp, board)) << ": " << "Left upper to " << tmp << ": " << get_left_upper_idx(tmp, board);
-    std::cout << std::endl << (5 == get_right_upper_idx(tmp, board)) << ": " << "Right upper to " << tmp << ": " << get_right_upper_idx(tmp, board);
-    std::cout << std::endl << (12 == get_left_lower_idx(tmp, board)) << ": " << "Left lower to " << tmp << ": " << get_left_lower_idx(tmp, board);
-    std::cout << std::endl << (13 == get_right_lower_idx(tmp, board)) << ": " << "Right lower to " << tmp << ": " << get_right_lower_idx(tmp, board);
+    std::cout << std::endl << (4 == get_left_upper_idx(tmp)) << ": " << "Left upper to " << tmp << ": " << get_left_upper_idx(tmp);
+    std::cout << std::endl << (5 == get_right_upper_idx(tmp)) << ": " << "Right upper to " << tmp << ": " << get_right_upper_idx(tmp);
+    std::cout << std::endl << (12 == get_left_lower_idx(tmp)) << ": " << "Left lower to " << tmp << ": " << get_left_lower_idx(tmp);
+    std::cout << std::endl << (13 == get_right_lower_idx(tmp)) << ": " << "Right lower to " << tmp << ": " << get_right_lower_idx(tmp);
     std::cout << std::endl;
 
     tmp = 9;
-    std::cout << std::endl << (5 == get_left_upper_idx(tmp, board)) << ": " << "Left upper to " << tmp << ": " << get_left_upper_idx(tmp, board);
-    std::cout << std::endl << (6 == get_right_upper_idx(tmp, board)) << ": " << "Right upper to " << tmp << ": " << get_right_upper_idx(tmp, board);
-    std::cout << std::endl << (13 == get_left_lower_idx(tmp, board)) << ": " << "Left lower to " << tmp << ": " << get_left_lower_idx(tmp, board);
-    std::cout << std::endl << (14 == get_right_lower_idx(tmp, board)) << ": " << "Right lower to " << tmp << ": " << get_right_lower_idx(tmp, board);
+    std::cout << std::endl << (5 == get_left_upper_idx(tmp)) << ": " << "Left upper to " << tmp << ": " << get_left_upper_idx(tmp);
+    std::cout << std::endl << (6 == get_right_upper_idx(tmp)) << ": " << "Right upper to " << tmp << ": " << get_right_upper_idx(tmp);
+    std::cout << std::endl << (13 == get_left_lower_idx(tmp)) << ": " << "Left lower to " << tmp << ": " << get_left_lower_idx(tmp);
+    std::cout << std::endl << (14 == get_right_lower_idx(tmp)) << ": " << "Right lower to " << tmp << ": " << get_right_lower_idx(tmp);
     std::cout << std::endl;
 
     tmp = 11;
-    std::cout << std::endl << (7 == get_left_upper_idx(tmp, board)) << ": " << "Left upper to " << tmp << ": " << get_left_upper_idx(tmp, board);
-    std::cout << std::endl << (32 == get_right_upper_idx(tmp, board)) << ": " << "Right upper to " << tmp << ": " << get_right_upper_idx(tmp, board);
-    std::cout << std::endl << (15 == get_left_lower_idx(tmp, board)) << ": " << "Left lower to " << tmp << ": " << get_left_lower_idx(tmp, board);
-    std::cout << std::endl << (32 == get_right_lower_idx(tmp, board)) << ": " << "Right lower to " << tmp << ": " << get_right_lower_idx(tmp, board);
+    std::cout << std::endl << (7 == get_left_upper_idx(tmp)) << ": " << "Left upper to " << tmp << ": " << get_left_upper_idx(tmp);
+    std::cout << std::endl << (32 == get_right_upper_idx(tmp)) << ": " << "Right upper to " << tmp << ": " << get_right_upper_idx(tmp);
+    std::cout << std::endl << (15 == get_left_lower_idx(tmp)) << ": " << "Left lower to " << tmp << ": " << get_left_lower_idx(tmp);
+    std::cout << std::endl << (32 == get_right_lower_idx(tmp)) << ": " << "Right lower to " << tmp << ": " << get_right_lower_idx(tmp);
     std::cout << std::endl;
 
     //test bottom
     tmp = 28;
-    std::cout << std::endl << (32 == get_left_upper_idx(tmp, board)) << ": " << "Left upper to " << tmp << ": " << get_left_upper_idx(tmp, board);
-    std::cout << std::endl << (24 == get_right_upper_idx(tmp, board)) << ": " << "Right upper to " << tmp << ": " << get_right_upper_idx(tmp, board);
-    std::cout << std::endl << (32 == get_left_lower_idx(tmp, board)) << ": " << "Left lower to " << tmp << ": " << get_left_lower_idx(tmp, board);
-    std::cout << std::endl << (32 == get_right_lower_idx(tmp, board)) << ": " << "Right lower to " << tmp << ": " << get_right_lower_idx(tmp, board);
+    std::cout << std::endl << (32 == get_left_upper_idx(tmp)) << ": " << "Left upper to " << tmp << ": " << get_left_upper_idx(tmp);
+    std::cout << std::endl << (24 == get_right_upper_idx(tmp)) << ": " << "Right upper to " << tmp << ": " << get_right_upper_idx(tmp);
+    std::cout << std::endl << (32 == get_left_lower_idx(tmp)) << ": " << "Left lower to " << tmp << ": " << get_left_lower_idx(tmp);
+    std::cout << std::endl << (32 == get_right_lower_idx(tmp)) << ": " << "Right lower to " << tmp << ": " << get_right_lower_idx(tmp);
     std::cout << std::endl;
 
     tmp = 29;
-    std::cout << std::endl << (24 == get_left_upper_idx(tmp, board)) << ": " << "Left upper to " << tmp << ": " << get_left_upper_idx(tmp, board);
-    std::cout << std::endl << (25 == get_right_upper_idx(tmp, board)) << ": " << "Right upper to " << tmp << ": " << get_right_upper_idx(tmp, board);
-    std::cout << std::endl << (32 == get_left_lower_idx(tmp, board)) << ": " << "Left lower to " << tmp << ": " << get_left_lower_idx(tmp, board);
-    std::cout << std::endl << (32 == get_right_lower_idx(tmp, board)) << ": " << "Right lower to " << tmp << ": " << get_right_lower_idx(tmp, board);
+    std::cout << std::endl << (24 == get_left_upper_idx(tmp)) << ": " << "Left upper to " << tmp << ": " << get_left_upper_idx(tmp);
+    std::cout << std::endl << (25 == get_right_upper_idx(tmp)) << ": " << "Right upper to " << tmp << ": " << get_right_upper_idx(tmp);
+    std::cout << std::endl << (32 == get_left_lower_idx(tmp)) << ": " << "Left lower to " << tmp << ": " << get_left_lower_idx(tmp);
+    std::cout << std::endl << (32 == get_right_lower_idx(tmp)) << ": " << "Right lower to " << tmp << ": " << get_right_lower_idx(tmp);
     std::cout << std::endl;
 
     tmp = 31;
-    std::cout << std::endl << (26 == get_left_upper_idx(tmp, board)) << ": " << "Left upper to " << tmp << ": " << get_left_upper_idx(tmp, board);
-    std::cout << std::endl << (27 == get_right_upper_idx(tmp, board)) << ": " << "Right upper to " << tmp << ": " << get_right_upper_idx(tmp, board);
-    std::cout << std::endl << (32 == get_left_lower_idx(tmp, board)) << ": " << "Left lower to " << tmp << ": " << get_left_lower_idx(tmp, board);
-    std::cout << std::endl << (32 == get_right_lower_idx(tmp, board)) << ": " << "Right lower to " << tmp << ": " << get_right_lower_idx(tmp, board);
+    std::cout << std::endl << (26 == get_left_upper_idx(tmp)) << ": " << "Left upper to " << tmp << ": " << get_left_upper_idx(tmp);
+    std::cout << std::endl << (27 == get_right_upper_idx(tmp)) << ": " << "Right upper to " << tmp << ": " << get_right_upper_idx(tmp);
+    std::cout << std::endl << (32 == get_left_lower_idx(tmp)) << ": " << "Left lower to " << tmp << ": " << get_left_lower_idx(tmp);
+    std::cout << std::endl << (32 == get_right_lower_idx(tmp)) << ": " << "Right lower to " << tmp << ": " << get_right_lower_idx(tmp);
     std::cout << std::endl;
 }
 
-void test_get_move_possibility(unsigned int board[4], unsigned int move_possibility[3], bool whites_turn)
+void test_get_move_possibility(unsigned int board[4], unsigned int move_pos[4])
 {
-    get_move_possibility(board, move_possibility, whites_turn);
-    std::cout << std::endl << "Possible moves " << (whites_turn ? "for white: " : "for black: ") << (GET_NUM_OF_MOVES(move_possibility)) << std::endl;
+    get_move_possibility(board, move_pos);
+    std::cout << std::endl << "Possible moves " << (GET_TURN_FLAG(board) ? "for white: " : "for black: ") << (GET_NUM_OF_MOVES(move_pos)) << std::endl;
     std::cout << "Indices of pawns possible to move: ";
-    for (unsigned int i = 0; i < GET_NUM_OF_MOVES(move_possibility); ++i)
+    for (unsigned int i = 0; i < GET_NUM_OF_MOVES(move_pos); ++i)
     {
-        std::cout << (GET_VAL_MOVE_POS(i, move_possibility)) << ' ';
+        std::cout << (GET_VAL_MOVE_POS(i, move_pos)) << ' ';
     }
     std::cout << std::endl;
 }
@@ -1043,11 +1058,10 @@ void test_get_move_possibility_init_loop(unsigned int board[4], int lower_bound,
         std::cout << "Running test " << i << std::endl;
 
         unsigned int move_possibility[3]{};
-        bool whites_turn = true;
-        test_get_move_possibility(board, move_possibility, whites_turn);
+        test_get_move_possibility(board, move_possibility);
 
-        whites_turn = false;
-        test_get_move_possibility(board, move_possibility, whites_turn);
+        FLIP_TURN_FLAG(board);
+        test_get_move_possibility(board, move_possibility);
         std::cout << std::endl;
 
         std::cout << std::endl;
@@ -1056,7 +1070,7 @@ void test_get_move_possibility_init_loop(unsigned int board[4], int lower_bound,
     }
 }
 
-void test_get_piece_move_pos(unsigned int board[4], unsigned int move_pos[3], unsigned int idx, unsigned int test_choice)
+void test_get_piece_move_pos(unsigned int board[4], unsigned int move_pos[4], unsigned int idx, unsigned int test_choice)
 {
     char cords[2];
     translate_idx_to_cords(idx, cords);
@@ -1068,11 +1082,10 @@ void test_get_piece_move_pos(unsigned int board[4], unsigned int move_pos[3], un
     test_translate_idx_to_cords();
     std::cout << std::endl;
 
-    bool whites_turn = true;
-    test_get_move_possibility(board, move_pos, whites_turn);
+    test_get_move_possibility(board, move_pos);
 
-    whites_turn = false;
-    test_get_move_possibility(board, move_pos, whites_turn);
+    FLIP_TURN_FLAG(board);
+    test_get_move_possibility(board, move_pos);
     std::cout << std::endl;
 
     get_piece_move_pos(board, move_pos, idx);
@@ -1081,7 +1094,7 @@ void test_get_piece_move_pos(unsigned int board[4], unsigned int move_pos[3], un
         std::cout << "Moves possible for piece on " << cords[0] << cords[1] << " - " << (GET_NUM_OF_MOVES(move_pos)) << std::endl;
         if (GET_BEATING_POS_FLAG(move_pos)) std::cout << "BEATING POSSIBLE!" << std::endl;
         std::cout << "List of tiles to choose from: ";
-        unsigned int (*get_dir_idx_ptr)(unsigned int&, unsigned int*);
+        unsigned int (*get_dir_idx_ptr)(unsigned int&);
         for (unsigned int dir = 0; dir < 4; ++dir)
         {
             switch (dir)
@@ -1100,7 +1113,7 @@ void test_get_piece_move_pos(unsigned int board[4], unsigned int move_pos[3], un
                 break;
             default: break;
             }
-            translate_idx_to_cords(get_dir_idx_ptr(idx, board), cords);
+            translate_idx_to_cords(get_dir_idx_ptr(idx), cords);
             if (GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_BEATING_FLAG(dir, move_pos)) std::cout << cords[0] << cords[1] << ' ';
             else if (!GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_DIR_FLAG(dir, move_pos)) std::cout << cords[0] << cords[1] << ' ';
         }
