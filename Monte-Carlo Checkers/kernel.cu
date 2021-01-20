@@ -374,22 +374,8 @@ void game_loop(unsigned int board[4], void (*white_player)(unsigned int*, unsign
         system("CLS");
         draw_board(board);
         std::cout << std::endl << (GET_TURN_FLAG(board) ? BG_WHITE_FG_BLACK : BG_BLACK_FG_WHITE) << (GET_TURN_FLAG(board) ? "White" : "Black") << "'s turn!" << BG_BLACK_FG_WHITE << std::endl << std::endl;
+        //get_move_possibility(board, move_pos);
         //system("pause");
-        get_move_possibility(board, move_pos);
-        std::cout << std::endl;
-        if (GET_BEATING_POS_FLAG(move_pos)) // - debugging
-        {
-            for (unsigned int i = 0; i < GET_NUM_OF_MOVES(move_pos); ++i)
-            {
-                unsigned int sequence_count = 0;
-                char cords[2];
-                translate_idx_to_cords((GET_VAL_MOVE_POS(i, move_pos)), cords);
-                for (unsigned int dir = 0; dir < 4; ++dir) sequence_count += count_beating_sequences_for_piece(board, (GET_VAL_MOVE_POS(i, move_pos)), dir);
-                std::cout << "Number of sequences for piece on " << cords[0] << cords[1] << ": " << sequence_count << std::endl;
-            }
-        }
-        test_get_move_possibility(board, move_pos);
-        system("pause");
 
         if (GET_TURN_FLAG(board))
             white_player(board, move_pos);
@@ -642,8 +628,9 @@ unsigned int count_beating_sequences_for_piece(unsigned int board[4], unsigned i
             return possible_moves;
         }
         get_piece_move_pos(tmp_board, piece_pos, cur_tile_idx);
-        if (!GET_BEATING_POS_FLAG(piece_pos)) // check if more beatings in sequence
+        if (GET_BEATING_POS_FLAG(piece_pos)) // check if more beatings in sequence
         {
+            possible_moves = 0;
             for (unsigned int dir = 0; dir < 4; ++dir)
                 possible_moves += count_beating_sequences_for_piece(tmp_board, cur_tile_idx, dir);
         }
@@ -930,33 +917,32 @@ int main(int argc, char** argv)
 void testing_function()
 {
     unsigned int board[4];
-
-    init_board(board);
-    draw_board(board);
-
     unsigned int move_possibility[3]{};
 
-    test_get_move_possibility(board, move_possibility);
+    //init_board(board);
+    //draw_board(board);
 
-    FLIP_TURN_FLAG(board);
-    test_get_move_possibility(board, move_possibility);
-    std::cout << std::endl;
+    //test_get_move_possibility(board, move_possibility);
 
-    std::cout << std::endl;
-    //test_get_idx_funs(board);
+    //FLIP_TURN_FLAG(board);
+    //test_get_move_possibility(board, move_possibility);
     //std::cout << std::endl;
-    test_translate_cords_to_idx();
-    test_translate_idx_to_cords();
-    std::cout << std::endl;
-    //test_get_move_possibility_init_loop(board);
+
     //std::cout << std::endl;
-    //test_get_piece_move_pos(board, move_possibility, 9, 6);
+    ////test_get_idx_funs(board);
+    ////std::cout << std::endl;
+    //test_translate_cords_to_idx();
+    //test_translate_idx_to_cords();
+    //std::cout << std::endl;
+    ////test_get_move_possibility_init_loop(board);
+    ////std::cout << std::endl;
+    ////test_get_piece_move_pos(board, move_possibility, 9, 6);
 
     init_board(board);
-    board[0] = 393216;
-    board[1] = 1073758344;
-    board[2] = 1426079744;
-    board[3] = 0;
+    board[0] = 1074020352;
+    board[1] = 1178861808;
+    board[2] = 102;
+    board[3] = 419424;
     FLIP_TURN_FLAG(board);
     system("CLS");
     draw_board(board);
