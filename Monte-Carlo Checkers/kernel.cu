@@ -71,7 +71,7 @@ void get_move_possibility(unsigned int board[4], unsigned int move_pos[3], bool 
 void get_piece_move_pos(unsigned int board[4], unsigned int move_pos[3], unsigned int& idx);
 void move_piece(unsigned int board[4], unsigned int& cur_tile_idx, unsigned int (*get_dir_idx_ptr)(unsigned int&, unsigned int*));
 ////////////////////////////////////////////////////////////////////////////////
-void game_loop(void (*white_player)(unsigned int*, unsigned int*, bool&), void (*black_player)(unsigned int*, unsigned int*, bool&));
+void game_loop(unsigned int board[4], void (*white_player)(unsigned int*, unsigned int*, bool&), void (*black_player)(unsigned int*, unsigned int*, bool&));
 void human_player(unsigned int board[4], unsigned int move_pos[3], bool& whites_turn);
 ////////////////////////////////////////////////////////////////////////////////
 void disp_moveable_pieces(unsigned int board[4], unsigned int move_possibility[3], bool whites_turn);
@@ -355,12 +355,10 @@ void move_piece(unsigned int board[4], unsigned int& cur_tile_idx, unsigned int 
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void game_loop(void (*white_player)(unsigned int*, unsigned int*, bool&), void (*black_player)(unsigned int*, unsigned int*, bool&))
+void game_loop(unsigned int board[4], void (*white_player)(unsigned int*, unsigned int*, bool&), void (*black_player)(unsigned int*, unsigned int*, bool&))
 {
-    unsigned int board[4], move_pos[3];
+    unsigned int move_pos[3];
     bool game_over = false, whites_turn = false, white_present = false, black_present = false;
-
-    init_board(board);
 
     while (!game_over) // main loop
     {
@@ -476,8 +474,18 @@ void human_player(unsigned int board[4], unsigned int move_pos[3], bool& whites_
 
             if ((GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_BEATING_FLAG(dir, move_pos)) || (!GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_DIR_FLAG(dir, move_pos)))
             {
+                board_beating_flag = IS_KING(board[choosen_idx1 >> 3] << 28 - ((choosen_idx1 & 7) << 2) >> 28); //memory recycling - dont mind the name
                 move_piece(board, choosen_idx1, get_dir_idx_ptr);
                 choosen_idx1 = get_dir_idx_ptr(choosen_idx2, board);
+                if (GET_PIECE_BEATING_FLAG(dir, move_pos))
+                    beating_sequence_in_progress = IS_KING(board[choosen_idx1 >> 3] << 28 - ((choosen_idx1 & 7) << 2) >> 28); //memory recycling - dont mind the name
+                else
+                    beating_sequence_in_progress = IS_KING(board[choosen_idx2 >> 3] << 28 - ((choosen_idx2 & 7) << 2) >> 28); //memory recycling - dont mind the name
+                if (board_beating_flag != (IS_KING(board[choosen_idx1 >> 3] << 28 - ((choosen_idx1 & 7) << 2) >> 28)))
+                {
+                    whites_turn = !whites_turn;
+                    return;
+                }
                 break;
             }
             std::cout << std::endl << "Impossible move!" << std::endl << "Please choose a different move!" << std::endl << std::endl;
@@ -506,7 +514,7 @@ void random_player(unsigned int board[4], unsigned int move_pos[3], bool& whites
     std::mt19937 gen(rd());
     std::uniform_int_distribution<> dist;
     unsigned int choosen_idx1, choosen_idx2, dir = 0, dir_idx_upper_bound, dir_idx_counter = 0;
-    bool beating_sequence_in_progress = false;
+    bool beating_sequence_in_progress = false, tmp;
     unsigned int (*get_dir_idx_ptr)(unsigned int&, unsigned int*);
 
     get_move_possibility(board, move_pos, whites_turn);
@@ -548,8 +556,18 @@ void random_player(unsigned int board[4], unsigned int move_pos[3], bool& whites
             choosen_idx2 = get_dir_idx_ptr(choosen_idx1, board);
             if ((GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_BEATING_FLAG(dir, move_pos)) || (!GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_DIR_FLAG(dir, move_pos)))
             {
+                tmp = IS_KING(board[choosen_idx1 >> 3] << 28 - ((choosen_idx1 & 7) << 2) >> 28);
                 move_piece(board, choosen_idx1, get_dir_idx_ptr);
                 choosen_idx1 = get_dir_idx_ptr(choosen_idx2, board);
+                if (GET_PIECE_BEATING_FLAG(dir, move_pos))
+                    beating_sequence_in_progress = IS_KING(board[choosen_idx1 >> 3] << 28 - ((choosen_idx1 & 7) << 2) >> 28); //memory recycling - dont mind the name
+                else
+                    beating_sequence_in_progress = IS_KING(board[choosen_idx2 >> 3] << 28 - ((choosen_idx2 & 7) << 2) >> 28); //memory recycling - dont mind the name
+                if (tmp != (IS_KING(board[choosen_idx1 >> 3] << 28 - ((choosen_idx1 & 7) << 2) >> 28)))
+                {
+                    whites_turn = !whites_turn;
+                    return;
+                }
                 break;
             }
         }
@@ -700,6 +718,8 @@ void translate_idx_to_cords(unsigned int idx, char cords[2])
 
 int main(int argc, char** argv)
 {
+    unsigned int board[4];
+
     unsigned short menu_choice = 0;
     bool player_chosen = false;
     void (*white_player)(unsigned int*, unsigned int*, bool&);
@@ -764,7 +784,8 @@ int main(int argc, char** argv)
             }
             menu_choice = 1;
             std::cin.ignore();
-            game_loop(white_player, black_player);
+            init_board(board);
+            game_loop(board, white_player, black_player);
             system("pause");
             system("CLS");
             break;
@@ -777,14 +798,18 @@ int main(int argc, char** argv)
         }
     }
 
-    //game_loop(&random_player, &random_player);
+    //init_board(board);
+    //game_loop(board, &random_player, &random_player);
     //unsigned int game_count = 1000;
     //std::chrono::steady_clock::time_point start, finish;
     //std::chrono::duration<double> elapsed;
     //
     //start = std::chrono::high_resolution_clock::now();
     //for (unsigned int i = 0; i < game_count; ++i)
-    //    game_loop(&random_player, &random_player);
+    //{
+    //    init_board(board);
+    //    game_loop(board, &random_player, &random_player);
+    //}
     //finish = std::chrono::high_resolution_clock::now();
     //elapsed = (finish - start);
 
@@ -979,6 +1004,12 @@ void test_get_move_possibility_board_init(unsigned int board[4], unsigned int te
         board[0] = 1141130308;
         board[1] = 1078198384;
         break;
+    case 7:
+        // test 7 - promotion switch turn
+        board[0] = 1073759296;
+        board[1] = 17412;
+        board[2] = 1617168128;
+        board[3] = 1711695462;
     default:
         break;
     }
