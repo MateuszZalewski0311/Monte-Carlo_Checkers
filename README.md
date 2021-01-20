@@ -13,7 +13,7 @@ to try and find the best possible move.
 * User Input Moves - DONE
 * Game Loop - DONE
 * Player Functions
- * Human - DONE
- * Fully Random - DONE
- * MTS on CPU - Partially DONE
- * MTS on CUDA - TODO
+  * Human - DONE
+  * Fully Random - DONE
+  * MTS on CPU - Partially DONE
+  * MTS on CUDA - TODO
