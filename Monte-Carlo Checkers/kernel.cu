@@ -73,7 +73,7 @@ void human_player(unsigned int board[4], unsigned int move_pos[4]);
 void random_player(unsigned int board[4], unsigned int move_pos[4]);
 unsigned int simulate_game(unsigned int board[4]);
 unsigned int count_beating_sequences_for_piece_dir(unsigned int board[4], unsigned int cur_tile_idx, unsigned int dir);
-void MCTS_CPU_player(unsigned int board[4]);
+void MCTS_CPU_player(unsigned int board[4], unsigned int move_pos[4]);
 ////////////////////////////////////////////////////////////////////////////////
 void disp_moveable_pieces(unsigned int board[4], unsigned int move_pos[4]);
 void disp_possible_dirs(unsigned int board[4], unsigned int move_pos[4], unsigned int& idx);
@@ -279,7 +279,7 @@ void get_move_possibility(unsigned int board[4], unsigned int move_pos[4])
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Index of tile that can be moved is stored similarly as board representation, but in 8 bits instead of 2 bits
+// flags in 2 bit pairs
 // move_pos[2] is used for storing, the same spots as in get_move_possibility are used for beating available flag and number of indexes saved
 void get_piece_move_pos(unsigned int board[4], unsigned int move_pos[4], unsigned int& idx)
 {
@@ -369,7 +369,7 @@ void game_loop(unsigned int board[4], void (*white_player)(unsigned int*, unsign
     unsigned int move_pos[4];
     do
     {
-        system("CLS");
+        system("cls");
         draw_board(board);
         std::cout << std::endl << (GET_TURN_FLAG(board) ? BG_WHITE_FG_BLACK : BG_BLACK_FG_WHITE) << (GET_TURN_FLAG(board) ? "White" : "Black") << "'s turn!" << BG_BLACK_FG_WHITE << std::endl << std::endl;
         //get_move_possibility(board, move_pos);
@@ -392,7 +392,7 @@ void human_player(unsigned int board[4], unsigned int move_pos[4])
 
     auto redraw_beginning = [board]()
     {
-        system("CLS");
+        system("cls");
         draw_board(board);
         std::cout << std::endl << (GET_TURN_FLAG(board) ? BG_WHITE_FG_BLACK : BG_BLACK_FG_WHITE) << (GET_TURN_FLAG(board) ? "White" : "Black") << "'s turn!" << BG_BLACK_FG_WHITE << std::endl << std::endl;
     };
@@ -577,11 +577,12 @@ void random_player(unsigned int board[4], unsigned int move_pos[4])
 unsigned int simulate_game(unsigned int board[4])
 {
     unsigned int move_pos[4];
-    do
+    get_move_possibility(board, move_pos);
+    while (0 != (GET_NUM_OF_MOVES(move_pos))) // end game if noone can move
     {
         random_player(board, move_pos);
         get_move_possibility(board, move_pos);
-    } while (0 != (GET_NUM_OF_MOVES(move_pos))); // end game if noone can move
+    }
     get_end_state(board);
     return (board[0] & 2048 ? 2 : 0) | (board[0] & 128 ? 1 : 0);
 }
@@ -608,7 +609,7 @@ unsigned int count_beating_sequences_for_piece_dir(unsigned int board[4], unsign
     case 3:
         get_dir_idx_ptr = &get_right_lower_idx;
         break;
-    default: system("CLS"); std::cout << "ERROR"; system("pause"); exit(EXIT_FAILURE);
+    default: system("cls"); std::cout << "ERROR"; system("pause"); exit(EXIT_FAILURE);
     }
     if (GET_BEATING_POS_FLAG(piece_pos) && GET_PIECE_BEATING_FLAG(dir, piece_pos))
     {
@@ -632,41 +633,202 @@ unsigned int count_beating_sequences_for_piece_dir(unsigned int board[4], unsign
     return possible_moves;
 }
 
-void MCTS_CPU_player(unsigned int board[4])
+void MCTS_CPU_player(unsigned int board[4], unsigned int move_pos[4])
 {
-    //std::random_device rd;
-    //std::mt19937 gen(rd());
-    //std::uniform_int_distribution<> dist(0, 0);
-    //unsigned int (*get_dir_idx_ptr)(unsigned int&);
-    unsigned int move_pos[4]{}, *** first_layer, * sequence_count, choosable_piece_count = 0;// , piece_pos[4]{}, tmp_board[4]{};
-    double** success_rate, ** tries;
+    unsigned int ***first_layer, *sequence_count, *selected_tile , choosable_piece_count = 0;
+    double **success_rate, **tries;
 
+    // allocate memory for first layer
     get_move_possibility(board, move_pos);
     choosable_piece_count = GET_NUM_OF_MOVES(move_pos);
     first_layer = new unsigned int** [choosable_piece_count];
     sequence_count = new unsigned int[choosable_piece_count];
+    selected_tile = new unsigned int[choosable_piece_count];
     success_rate = new double* [choosable_piece_count];
     tries = new double* [choosable_piece_count];
 
     for (unsigned int i = 0; i < choosable_piece_count; ++i)
     {
         unsigned int possible_moves = 0;
-        unsigned int cur_tile_idx = GET_VAL_MOVE_POS(i, move_pos);
-        for (unsigned int dir = 0; dir < 4; ++dir)
-            possible_moves += count_beating_sequences_for_piece_dir(board, cur_tile_idx, dir);
+        selected_tile[i] = GET_VAL_MOVE_POS(i, move_pos);
+        if (GET_BEATING_POS_FLAG(move_pos))
+            for (unsigned int dir = 0; dir < 4; ++dir)
+                possible_moves += count_beating_sequences_for_piece_dir(board, selected_tile[i], dir);
+        else
+        {
+            get_piece_move_pos(board, move_pos, selected_tile[i]);
+            possible_moves = GET_NUM_OF_MOVES(move_pos);
+            get_move_possibility(board, move_pos);
+        }
         sequence_count[i] = possible_moves;
         first_layer[i] = new unsigned int* [sequence_count[i]];
         success_rate[i] = new double[sequence_count[i]];
         tries[i] = new double[sequence_count[i]];
 
         for (unsigned int j = 0; j < sequence_count[i]; ++j)
-            first_layer[i][j] = new unsigned int[4];
+        {
+            first_layer[i][j] = new unsigned int[4]{};
+            success_rate[i][j] = 0;
+            tries[i][j] = 0;
+        }
     }
 
     // build first layer
+    for (unsigned int i = 0; i < choosable_piece_count; ++i)
+    {
+        unsigned int tmp_board[4];
+        tmp_board[0] = board[0]; tmp_board[1] = board[1]; tmp_board[2] = board[2]; tmp_board[3] = board[3];
+        get_piece_move_pos(tmp_board, move_pos, selected_tile[i]);
+        if (!GET_BEATING_POS_FLAG(move_pos))
+        {
+            if (GET_NUM_OF_MOVES(move_pos) > 4) exit(EXIT_FAILURE);
+            for (unsigned int j = 0, dir = 0; dir < 4 && j < sequence_count[i]; ++dir)
+            {
+                tmp_board[0] = board[0]; tmp_board[1] = board[1]; tmp_board[2] = board[2]; tmp_board[3] = board[3];
+                if (!GET_PIECE_DIR_FLAG(dir, move_pos)) continue;
+                unsigned int (*get_dir_idx_ptr)(unsigned int&);
+                switch (dir)
+                {
+                case 0:
+                    get_dir_idx_ptr = &get_left_upper_idx;
+                    break;
+                case 1:
+                    get_dir_idx_ptr = &get_right_upper_idx;
+                    break;
+                case 2:
+                    get_dir_idx_ptr = &get_left_lower_idx;
+                    break;
+                case 3:
+                    get_dir_idx_ptr = &get_right_lower_idx;
+                    break;
+                default: exit(EXIT_FAILURE);
+                }
+                move_piece(tmp_board, selected_tile[i], get_dir_idx_ptr);
+                first_layer[i][j][0] = tmp_board[0];
+                first_layer[i][j][1] = tmp_board[1];
+                first_layer[i][j][2] = tmp_board[2];
+                first_layer[i][j][3] = tmp_board[3];
+                FLIP_TURN_FLAG(first_layer[i][j]);
+                ++j;
+            }
+        }
+        else
+        {
+            unsigned int chaser = 0, j = 0, tmp_count = 0, cur_tile_idx = selected_tile[i];
+            while (j < sequence_count[i])
+            {
+                for (unsigned int dir = 0; dir < 4; ++dir)
+                {
+                    tmp_count = count_beating_sequences_for_piece_dir(tmp_board, cur_tile_idx, dir);
+                    if (!tmp_count) continue;
+                    chaser += tmp_count;
+                    if (chaser <= j) continue;
+                    unsigned int (*get_dir_idx_ptr)(unsigned int&);
+                    switch (dir)
+                    {
+                    case 0:
+                        get_dir_idx_ptr = &get_left_upper_idx;
+                        break;
+                    case 1:
+                        get_dir_idx_ptr = &get_right_upper_idx;
+                        break;
+                    case 2:
+                        get_dir_idx_ptr = &get_left_lower_idx;
+                        break;
+                    case 3:
+                        get_dir_idx_ptr = &get_right_lower_idx;
+                        break;
+                    default: exit(EXIT_FAILURE);
+                    }
+                    move_piece(tmp_board, cur_tile_idx, get_dir_idx_ptr);
+                    cur_tile_idx = get_dir_idx_ptr(cur_tile_idx);
+                    cur_tile_idx = get_dir_idx_ptr(cur_tile_idx);
+                }
+                chaser = chaser - tmp_count;
+                if (((sequence_count[i] - j) != 1 && chaser <= j) || chaser < j) continue;
+                first_layer[i][j][0] = tmp_board[0]; 
+                first_layer[i][j][1] = tmp_board[1];
+                first_layer[i][j][2] = tmp_board[2]; 
+                first_layer[i][j][3] = tmp_board[3];
+                FLIP_TURN_FLAG(first_layer[i][j]);
+                cur_tile_idx = selected_tile[i];
+                tmp_board[0] = board[0]; tmp_board[1] = board[1]; tmp_board[2] = board[2]; tmp_board[3] = board[3];
+                chaser = 0;
+                ++j;
+            }
+        }
+    }
+
+    //for (unsigned int i = 0; i < choosable_piece_count; ++i)
+    //{
+    //    for (unsigned int j = 0; j < sequence_count[i]; ++j)
+    //    {
+    //        system("cls");
+    //        draw_board(first_layer[i][j]);
+    //        std::cout << std::endl << (GET_TURN_FLAG(first_layer[i][j]) ? BG_WHITE_FG_BLACK : BG_BLACK_FG_WHITE) << (GET_TURN_FLAG(first_layer[i][j]) ? "White" : "Black") << "'s turn!" << BG_BLACK_FG_WHITE << std::endl << std::endl;
+    //        //disp_end_state(tmp_board);
+    //        //system("pause");
+    //    }
+    //}
+
+    // run simulations
+    {
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<> dist1, dist2;
+        unsigned int piece_choice, sequence_choice, simulation_result, tmp_board[4];
+        if (choosable_piece_count - 1)
+            dist1 = std::uniform_int_distribution<>(0, choosable_piece_count-1);
+        for (unsigned int i = 0; i < 100000; ++i)
+        {
+            if (choosable_piece_count - 1) piece_choice = dist1(gen);
+            else piece_choice = 0;
+            if (sequence_count[piece_choice] - 1)
+            {
+                dist2 = std::uniform_int_distribution<>(0, sequence_count[piece_choice] - 1);
+                sequence_choice = dist2(gen);
+            }
+            else sequence_choice = 0;
+            tmp_board[0] = first_layer[piece_choice][sequence_choice][0]; 
+            tmp_board[1] = first_layer[piece_choice][sequence_choice][1];
+            tmp_board[2] = first_layer[piece_choice][sequence_choice][2];
+            tmp_board[3] = first_layer[piece_choice][sequence_choice][3];
+            simulation_result = simulate_game(tmp_board);
+            if (!simulation_result)
+                continue;
+            else if (simulation_result == 3) 
+                success_rate[piece_choice][sequence_choice] += 0.5;
+            else if ((simulation_result == 2 && GET_TURN_FLAG(board)) || (simulation_result == 1 && GET_TURN_FLAG(board))) 
+                success_rate[piece_choice][sequence_choice] += 1.0;
+            tries[piece_choice][sequence_choice] += 1;
+        }
+    }
+
+    // extract success rate
+    for (unsigned int i = 0; i < choosable_piece_count; ++i)
+        for (unsigned int j = 0; j < sequence_count[i]; ++j)
+            if (tries[i][j] > 0)
+            success_rate[i][j] /= tries[i][j];
 
     // make a move
+    {
+        double max = -1.0;
+        unsigned int idx1, idx2;
+        for (unsigned int i = 0; i < choosable_piece_count; ++i)
+            for (unsigned int j = 0; j < sequence_count[i]; ++j)
+                if (success_rate[i][j] > max)
+                {
+                    max = success_rate[i][j];
+                    idx1 = i; idx2 = j;
+                }
 
+        board[0] = first_layer[idx1][idx2][0]; 
+        board[1] = first_layer[idx1][idx2][1];
+        board[2] = first_layer[idx1][idx2][2]; 
+        board[3] = first_layer[idx1][idx2][3];
+    }
+
+    // deallocate memory for first layer
     for (unsigned int i = 0; i < choosable_piece_count; ++i)
     {
         for (unsigned int j = 0; j < sequence_count[i]; ++j)
@@ -836,7 +998,7 @@ void get_end_state(unsigned int board[4])
 
 void disp_end_state(unsigned int* board)
 {
-    system("CLS");
+    system("cls");
     draw_board(board);
     get_end_state(board);
     if (board[0] & 2048 && board[0] & 128) std::cout << std::endl << "Game ended in a draw!" << std::endl << std::endl;
@@ -861,6 +1023,7 @@ int main(int argc, char** argv)
     //testing_function();
     while (menu_choice != 3) {
         player_chosen = false;
+        std::cout << BG_BBLUE_FG_BLACK << "!!! Monte-Carlo Tree Search Checkers !!!" << BG_BLACK_FG_WHITE << std::endl << std::endl;
         std::cout << "1. Start Game - Black Always Begins" << std::endl;
         std::cout << "2. Simulate a Game" << std::endl;
         std::cout << "3. Exit" << std::endl;
@@ -871,9 +1034,10 @@ int main(int argc, char** argv)
         case 1:
             while (!player_chosen)
             {
-                system("CLS");
+                system("cls");
                 std::cout << "1. Human Player" << std::endl;
                 std::cout << "2. Random Player" << std::endl;
+                std::cout << "3. MCTS_CPU Player" << std::endl;
                 std::cout << BG_WHITE_FG_BLACK << "White" << BG_BLACK_FG_WHITE << " Player Choice: ";
                 std::cin >> menu_choice;
                 std::cout << std::endl;
@@ -887,17 +1051,22 @@ int main(int argc, char** argv)
                     white_player = &random_player;
                     player_chosen = true;
                     break;
+                case 3:
+                    white_player = &MCTS_CPU_player;
+                    player_chosen = true;
+                    break;
                 default:
-                    system("CLS");
+                    system("cls");
                     std::cout << "Please provide a valid choice!" << std::endl << std::endl;
                 }
             }
             player_chosen = false;
             while (!player_chosen)
             {
-                system("CLS");
+                system("cls");
                 std::cout << "1. Human Player" << std::endl;
                 std::cout << "2. Random Player" << std::endl;
+                std::cout << "3. MCTS_CPU Player" << std::endl;
                 std::cout << "Black Player Choice: ";
                 std::cin >> menu_choice;
                 std::cout << std::endl;
@@ -911,8 +1080,12 @@ int main(int argc, char** argv)
                     black_player = &random_player;
                     player_chosen = true;
                     break;
+                case 3:
+                    black_player = &MCTS_CPU_player;
+                    player_chosen = true;
+                    break;
                 default:
-                    system("CLS");
+                    system("cls");
                     std::cout << "Please provide a valid choice!" << std::endl << std::endl;
                 }
             }
@@ -922,19 +1095,19 @@ int main(int argc, char** argv)
             game_loop(board, white_player, black_player);
             disp_end_state(board);
             system("pause");
-            system("CLS");
+            system("cls");
             break;
         case 2:
             init_board(board);
             simulate_game(board);
             disp_end_state(board);
             system("pause");
-            system("CLS");
+            system("cls");
             break;
         case 3:
             break;
         default:
-            system("CLS");
+            system("cls");
             std::cout << "Please provide a valid choice!" << std::endl << std::endl;
             break;
         }
@@ -972,12 +1145,13 @@ void testing_function()
     board[1] = 1178861808;
     board[2] = 102;
     board[3] = 419424;
-    FLIP_TURN_FLAG(board);
-    system("CLS");
+    //FLIP_TURN_FLAG(board);
+    system("cls");
     draw_board(board);
     test_get_move_possibility(board, move_possibility);
     test_get_piece_move_pos(board, move_possibility, 4);
-    game_loop(board, &random_player, &random_player);
+    MCTS_CPU_player(board, move_possibility);
+    //game_loop(board, &random_player, &random_player);
     disp_end_state(board);
     system("pause");
 
@@ -1176,7 +1350,7 @@ void test_get_move_possibility_init_loop(unsigned int board[4], int lower_bound,
     {
         system("pause");
         test_get_move_possibility_board_init(board, i);
-        system("CLS");
+        system("cls");
         draw_board(board);
 
         std::cout << "Running test " << i << std::endl;
@@ -1186,6 +1360,7 @@ void test_get_move_possibility_init_loop(unsigned int board[4], int lower_bound,
 
         FLIP_TURN_FLAG(board);
         test_get_move_possibility(board, move_possibility);
+        FLIP_TURN_FLAG(board);
         std::cout << std::endl;
 
         std::cout << std::endl;
@@ -1199,7 +1374,7 @@ void test_get_piece_move_pos(unsigned int board[4], unsigned int move_pos[4], un
     char cords[2];
     translate_idx_to_cords(idx, cords);
 
-    system("CLS");
+    system("cls");
     draw_board(board);
     test_translate_cords_to_idx();
     test_translate_idx_to_cords();
@@ -1209,6 +1384,7 @@ void test_get_piece_move_pos(unsigned int board[4], unsigned int move_pos[4], un
 
     FLIP_TURN_FLAG(board);
     test_get_move_possibility(board, move_pos);
+    FLIP_TURN_FLAG(board);
     std::cout << std::endl;
 
     get_piece_move_pos(board, move_pos, idx);
