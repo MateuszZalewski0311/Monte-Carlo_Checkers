@@ -10,6 +10,11 @@
 // includes, cuda
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
+#include <curand_kernel.h>
+
+// includes, thrust
+#include <thrust/host_vector.h>
+#include <thrust/device_vector.h>
 
 ////////////////////////////////////////////////////////////////////////////////
 #define BG_BBLUE_FG_BLACK "\033[104;30m"
@@ -30,6 +35,9 @@
 // example: 0100 0100 0100 0100 0000 0000 0000 0000
 // indexing: 7 6 5 4 3 2 1 0
 
+//#define DEBUG;
+//#define MEASURE_TIME
+#define THREADS_PER_BLOCK 1024
 //////////////////////////////////////////////////////////////////////////////// - board state macros
 #define SET_VAL_BOARD(idx, val, board) board[idx >> 3] ^= (board[idx >> 3] ^ val << ((idx & 7) << 2)) & (15 << ((idx & 7) << 2))
 #define GET_VAL_BOARD(idx, board) board[idx >> 3] << 28 - ((idx & 7) << 2) >> 28
@@ -58,15 +66,15 @@
 ////////////////////////////////////////////////////////////////////////////////
 void init_board(unsigned int board[4]);
 void draw_board(unsigned int board[4]);
-unsigned int get_left_upper_idx(unsigned int& cur_tile_idx);
-unsigned int get_right_upper_idx(unsigned int& cur_tile_idx);
-unsigned int get_left_lower_idx(unsigned int& cur_tile_idx);
-unsigned int get_right_lower_idx(unsigned int& cur_tile_idx);
-void get_move_possibility_loop_fun(unsigned int board[4], unsigned int move_pos[4], unsigned int& cur_idx, unsigned int& moves_idx);
-void get_move_possibility(unsigned int board[4], unsigned int move_pos[4]);
+__host__ __device__ unsigned int get_left_upper_idx(unsigned int& cur_tile_idx);
+__host__ __device__ unsigned int get_right_upper_idx(unsigned int& cur_tile_idx);
+__host__ __device__ unsigned int get_left_lower_idx(unsigned int& cur_tile_idx);
+__host__ __device__ unsigned int get_right_lower_idx(unsigned int& cur_tile_idx);
+__host__ __device__ void get_move_possibility_loop_fun(unsigned int board[4], unsigned int move_pos[4], unsigned int& cur_idx, unsigned int& moves_idx);
+__host__ __device__ void get_move_possibility(unsigned int board[4], unsigned int move_pos[4]);
 ////////////////////////////////////////////////////////////////////////////////
-void get_piece_move_pos(unsigned int board[4], unsigned int move_pos[4], unsigned int& idx);
-void move_piece(unsigned int board[4], unsigned int& cur_tile_idx, unsigned int (*get_dir_idx_ptr)(unsigned int&));
+__host__ __device__ void get_piece_move_pos(unsigned int board[4], unsigned int move_pos[4], unsigned int& idx);
+__host__ __device__ void move_piece(unsigned int board[4], unsigned int& cur_tile_idx, unsigned int (*get_dir_idx_ptr)(unsigned int&));
 ////////////////////////////////////////////////////////////////////////////////
 void game_loop(unsigned int board[4], void (*white_player)(unsigned int*, unsigned int*), void (*black_player)(unsigned int*, unsigned int*));
 void human_player(unsigned int board[4], unsigned int move_pos[4]);
@@ -74,13 +82,18 @@ void random_player(unsigned int board[4], unsigned int move_pos[4]);
 unsigned int simulate_game(unsigned int board[4]);
 unsigned int count_beating_sequences_for_piece_dir(unsigned int board[4], unsigned int cur_tile_idx, unsigned int dir);
 void MCTS_CPU_player(unsigned int board[4], unsigned int move_pos[4]);
+void MCTS_GPU_player(unsigned int board[4], unsigned int move_pos[4]);
+__global__ void MCTS_kernel(const unsigned int* d_first_layer, curandState* states, float* d_results);
+__global__ void setup_kernel(curandState* states);
+__device__ void random_player_GPU(unsigned int board[4], unsigned int move_pos[4], curandState* state);
 ////////////////////////////////////////////////////////////////////////////////
 void disp_moveable_pieces(unsigned int board[4], unsigned int move_pos[4]);
 void disp_possible_dirs(unsigned int board[4], unsigned int move_pos[4], unsigned int& idx);
 void get_cords_from_console(char cords[2]);
 unsigned int translate_cords_to_idx(const char cords[2]);
 void translate_idx_to_cords(unsigned int idx, char cords[2]);
-void get_end_state(unsigned int board[4]);
+__device__ float simulate_game_GPU(unsigned int board[4], curandState* states);
+__host__ __device__ void get_end_state(unsigned int board[4]);
 void disp_end_state(unsigned int* board);
 ////////////////////////////////////////////////////////////////////////////////
 void testing_function();
@@ -145,7 +158,7 @@ void draw_board(unsigned int board[4])
 
 ////////////////////////////////////////////////////////////////////////////////
 
-unsigned int get_left_upper_idx(unsigned int& cur_tile_idx)
+__host__ __device__ unsigned int get_left_upper_idx(unsigned int& cur_tile_idx)
 {
     if (cur_tile_idx > 31 || !(cur_tile_idx >> 2)) return 32; // second condition is top row
     if (cur_tile_idx & 4) // even row (counting from 1)
@@ -160,7 +173,7 @@ unsigned int get_left_upper_idx(unsigned int& cur_tile_idx)
     }
 }
 
-unsigned int get_right_upper_idx(unsigned int& cur_tile_idx)
+__host__ __device__ unsigned int get_right_upper_idx(unsigned int& cur_tile_idx)
 {
     if (cur_tile_idx > 31 || !(cur_tile_idx >> 2)) return 32; // second cond chcks if top row
     if (cur_tile_idx & 4) // even row (counting from 1)
@@ -175,7 +188,7 @@ unsigned int get_right_upper_idx(unsigned int& cur_tile_idx)
     }
 }
 
-unsigned int get_left_lower_idx(unsigned int& cur_tile_idx)
+__host__ __device__ unsigned int get_left_lower_idx(unsigned int& cur_tile_idx)
 {
     if (cur_tile_idx > 31 || (cur_tile_idx >> 2) == 7) return 32; // second cond chcks if bottom row
     if (cur_tile_idx & 4) // even row (counting from 1)
@@ -190,7 +203,7 @@ unsigned int get_left_lower_idx(unsigned int& cur_tile_idx)
     }
 }
 
-unsigned int get_right_lower_idx(unsigned int& cur_tile_idx)
+__host__ __device__ unsigned int get_right_lower_idx(unsigned int& cur_tile_idx)
 {
     if (cur_tile_idx > 31 || (cur_tile_idx >> 2) == 7) return 32; // second cond chcks if bottom row
     if (cur_tile_idx & 4) // even row (counting from 1)
@@ -205,7 +218,7 @@ unsigned int get_right_lower_idx(unsigned int& cur_tile_idx)
     }
 }
 
-void get_move_possibility_loop_fun(unsigned int board[4], unsigned int move_pos[4], unsigned int& cur_idx, unsigned int& moves_idx)
+__host__ __device__ void get_move_possibility_loop_fun(unsigned int board[4], unsigned int move_pos[4], unsigned int& cur_idx, unsigned int& moves_idx)
 {
     unsigned int tile, tmp_idx, result;
     tile = GET_VAL_BOARD(cur_idx, board);
@@ -268,7 +281,7 @@ void get_move_possibility_loop_fun(unsigned int board[4], unsigned int move_pos[
 
 // Index of tile that can be moved is stored similarly as board representation, but in 8 bits instead of 4 bits
 // Additionally some space in move_pos[2] is used for flags and saving number of indexes in the whole array
-void get_move_possibility(unsigned int board[4], unsigned int move_pos[4])
+__host__ __device__ void get_move_possibility(unsigned int board[4], unsigned int move_pos[4])
 {
     unsigned int moves_idx = 0;
     move_pos[0] = move_pos[1] = move_pos[2] = move_pos[3] = 0;
@@ -281,7 +294,7 @@ void get_move_possibility(unsigned int board[4], unsigned int move_pos[4])
 
 // flags in 2 bit pairs
 // move_pos[2] is used for storing, the same spots as in get_move_possibility are used for beating available flag and number of indexes saved
-void get_piece_move_pos(unsigned int board[4], unsigned int move_pos[4], unsigned int& idx)
+__host__ __device__ void get_piece_move_pos(unsigned int board[4], unsigned int move_pos[4], unsigned int& idx)
 {
     unsigned int tile, tmp_idx, result, move_counter = 0;
     move_pos[2] = move_pos[3] = 0;
@@ -338,7 +351,7 @@ void get_piece_move_pos(unsigned int board[4], unsigned int move_pos[4], unsigne
     SET_NUM_OF_MOVES(move_pos, move_counter);
 }
 
-void move_piece(unsigned int board[4], unsigned int& cur_tile_idx, unsigned int (*get_dir_idx_ptr)(unsigned int&))
+__host__ __device__ void move_piece(unsigned int board[4], unsigned int& cur_tile_idx, unsigned int (*get_dir_idx_ptr)(unsigned int&))
 {
     if (cur_tile_idx > 31) return;
 
@@ -635,8 +648,17 @@ unsigned int count_beating_sequences_for_piece_dir(unsigned int board[4], unsign
 
 void MCTS_CPU_player(unsigned int board[4], unsigned int move_pos[4])
 {
-    unsigned int ***first_layer, *sequence_count, *selected_tile , choosable_piece_count = 0;
-    double **success_rate, **tries;
+    unsigned int*** first_layer, * sequence_count, * selected_tile, choosable_piece_count = 0;
+    double** success_rate, ** tries;
+
+#ifdef MEASURE_TIME
+    float elapsed;
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+    
+    cudaEventRecord(start);
+#endif // MEASURE_TIME
 
     // allocate memory for first layer
     get_move_possibility(board, move_pos);
@@ -746,9 +768,9 @@ void MCTS_CPU_player(unsigned int board[4], unsigned int move_pos[4])
                 }
                 chaser = chaser - tmp_count;
                 if (((sequence_count[i] - j) != 1 && chaser <= j) || chaser < j) continue;
-                first_layer[i][j][0] = tmp_board[0]; 
+                first_layer[i][j][0] = tmp_board[0];
                 first_layer[i][j][1] = tmp_board[1];
-                first_layer[i][j][2] = tmp_board[2]; 
+                first_layer[i][j][2] = tmp_board[2];
                 first_layer[i][j][3] = tmp_board[3];
                 FLIP_TURN_FLAG(first_layer[i][j]);
                 cur_tile_idx = selected_tile[i];
@@ -771,6 +793,16 @@ void MCTS_CPU_player(unsigned int board[4], unsigned int move_pos[4])
     //    }
     //}
 
+#ifdef MEASURE_TIME
+    cudaEventRecord(stop);
+
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&elapsed, start, stop);
+
+    std::cout << std::endl << "First Layer Building time: " << elapsed << " ms" << std::endl;
+    cudaEventRecord(start);
+#endif // MEASURE_TIME
+
     // run simulations
     {
         std::random_device rd;
@@ -778,8 +810,13 @@ void MCTS_CPU_player(unsigned int board[4], unsigned int move_pos[4])
         std::uniform_int_distribution<> dist1, dist2;
         unsigned int piece_choice, sequence_choice, simulation_result, tmp_board[4];
         if (choosable_piece_count - 1)
-            dist1 = std::uniform_int_distribution<>(0, choosable_piece_count-1);
-        for (unsigned int i = 0; i < 100000; ++i)
+            dist1 = std::uniform_int_distribution<>(0, choosable_piece_count - 1);
+
+        unsigned int possible_sequences = 0;
+        for (unsigned int i = 0; i < choosable_piece_count; ++i)
+            possible_sequences += sequence_count[i];
+
+        for (unsigned int i = 0; i < possible_sequences * THREADS_PER_BLOCK; ++i)
         {
             if (choosable_piece_count - 1) piece_choice = dist1(gen);
             else piece_choice = 0;
@@ -789,26 +826,38 @@ void MCTS_CPU_player(unsigned int board[4], unsigned int move_pos[4])
                 sequence_choice = dist2(gen);
             }
             else sequence_choice = 0;
-            tmp_board[0] = first_layer[piece_choice][sequence_choice][0]; 
+            tmp_board[0] = first_layer[piece_choice][sequence_choice][0];
             tmp_board[1] = first_layer[piece_choice][sequence_choice][1];
             tmp_board[2] = first_layer[piece_choice][sequence_choice][2];
             tmp_board[3] = first_layer[piece_choice][sequence_choice][3];
             simulation_result = simulate_game(tmp_board);
             if (!simulation_result)
                 continue;
-            else if (simulation_result == 3) 
+            else if (simulation_result == 3)
                 success_rate[piece_choice][sequence_choice] += 0.5;
-            else if ((simulation_result == 2 && GET_TURN_FLAG(board)) || (simulation_result == 1 && GET_TURN_FLAG(board))) 
+            else if ((simulation_result == 2 && GET_TURN_FLAG(board)) || (simulation_result == 1 && GET_TURN_FLAG(board)))
                 success_rate[piece_choice][sequence_choice] += 1.0;
             tries[piece_choice][sequence_choice] += 1;
         }
     }
 
+#ifdef MEASURE_TIME
+    cudaEventRecord(stop);
+
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&elapsed, start, stop);
+
+    std::cout << std::endl << "CPU Simulation time: " << elapsed << " ms" << std::endl;
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
+    system("pause");
+#endif // MEASURE_TIME
+
     // extract success rate
     for (unsigned int i = 0; i < choosable_piece_count; ++i)
         for (unsigned int j = 0; j < sequence_count[i]; ++j)
             if (tries[i][j] > 0)
-            success_rate[i][j] /= tries[i][j];
+                success_rate[i][j] /= tries[i][j];
 
     // make a move
     {
@@ -822,9 +871,9 @@ void MCTS_CPU_player(unsigned int board[4], unsigned int move_pos[4])
                     idx1 = i; idx2 = j;
                 }
 
-        board[0] = first_layer[idx1][idx2][0]; 
+        board[0] = first_layer[idx1][idx2][0];
         board[1] = first_layer[idx1][idx2][1];
-        board[2] = first_layer[idx1][idx2][2]; 
+        board[2] = first_layer[idx1][idx2][2];
         board[3] = first_layer[idx1][idx2][3];
     }
 
@@ -841,6 +890,329 @@ void MCTS_CPU_player(unsigned int board[4], unsigned int move_pos[4])
     delete[] success_rate;
     delete[] tries;
     delete[] sequence_count;
+}
+
+void MCTS_GPU_player(unsigned int board[4], unsigned int move_pos[4])
+{
+    thrust::host_vector<unsigned int> h_first_layer;
+    thrust::device_vector<unsigned int> d_first_layer;
+    thrust::device_vector<float> d_results;
+    unsigned int* sequence_count, * selected_tile, choosable_piece_count = 0, possible_sequences = 0;
+    float* success_rates;
+
+#ifdef MEASURE_TIME
+    float elapsed;
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+#endif // MEASURE_TIME
+
+    // allocate memory for computing first layer
+    get_move_possibility(board, move_pos);
+    choosable_piece_count = GET_NUM_OF_MOVES(move_pos);
+    sequence_count = new unsigned int[choosable_piece_count];
+    selected_tile = new unsigned int[choosable_piece_count];
+
+    for (unsigned int i = 0; i < choosable_piece_count; ++i)
+    {
+        unsigned int possible_moves = 0;
+        selected_tile[i] = GET_VAL_MOVE_POS(i, move_pos);
+        if (GET_BEATING_POS_FLAG(move_pos))
+            for (unsigned int dir = 0; dir < 4; ++dir)
+                possible_moves += count_beating_sequences_for_piece_dir(board, selected_tile[i], dir);
+        else
+        {
+            get_piece_move_pos(board, move_pos, selected_tile[i]);
+            possible_moves = GET_NUM_OF_MOVES(move_pos);
+            get_move_possibility(board, move_pos);
+        }
+        sequence_count[i] = possible_moves;
+        possible_sequences += possible_moves;
+    }
+    // allocate memory for host_vector
+    h_first_layer = thrust::host_vector<unsigned int>(static_cast<size_t>(possible_sequences) * 4);
+    d_results = thrust::device_vector<float>(static_cast<size_t>(possible_sequences) * THREADS_PER_BLOCK);
+    success_rates = new float[possible_sequences];
+
+    // build first layer
+    for (unsigned int host_idx = 0, i = 0; i < choosable_piece_count; ++i)
+    {
+        unsigned int tmp_board[4];
+        tmp_board[0] = board[0]; tmp_board[1] = board[1]; tmp_board[2] = board[2]; tmp_board[3] = board[3];
+        get_piece_move_pos(tmp_board, move_pos, selected_tile[i]);
+        if (!GET_BEATING_POS_FLAG(move_pos))
+        {
+            if (GET_NUM_OF_MOVES(move_pos) > 4) exit(EXIT_FAILURE);
+            for (unsigned int j = 0, dir = 0; dir < 4 && j < sequence_count[i]; ++dir)
+            {
+                tmp_board[0] = board[0]; tmp_board[1] = board[1]; tmp_board[2] = board[2]; tmp_board[3] = board[3];
+                if (!GET_PIECE_DIR_FLAG(dir, move_pos)) continue;
+                unsigned int (*get_dir_idx_ptr)(unsigned int&);
+                switch (dir)
+                {
+                case 0:
+                    get_dir_idx_ptr = &get_left_upper_idx;
+                    break;
+                case 1:
+                    get_dir_idx_ptr = &get_right_upper_idx;
+                    break;
+                case 2:
+                    get_dir_idx_ptr = &get_left_lower_idx;
+                    break;
+                case 3:
+                    get_dir_idx_ptr = &get_right_lower_idx;
+                    break;
+                default: exit(EXIT_FAILURE);
+                }
+                move_piece(tmp_board, selected_tile[i], get_dir_idx_ptr);
+                FLIP_TURN_FLAG(tmp_board);
+                h_first_layer[static_cast<size_t>(host_idx)] = tmp_board[0];
+                h_first_layer[static_cast<size_t>(host_idx) + 1] = tmp_board[1];
+                h_first_layer[static_cast<size_t>(host_idx) + 2] = tmp_board[2];
+                h_first_layer[static_cast<size_t>(host_idx) + 3] = tmp_board[3];
+                host_idx += 4;
+                ++j;
+            }
+        }
+        else
+        {
+            unsigned int chaser = 0, j = 0, tmp_count = 0, cur_tile_idx = selected_tile[i];
+            while (j < sequence_count[i])
+            {
+                for (unsigned int dir = 0; dir < 4; ++dir)
+                {
+                    tmp_count = count_beating_sequences_for_piece_dir(tmp_board, cur_tile_idx, dir);
+                    if (!tmp_count) continue;
+                    chaser += tmp_count;
+                    if (chaser <= j) continue;
+                    unsigned int (*get_dir_idx_ptr)(unsigned int&);
+                    switch (dir)
+                    {
+                    case 0:
+                        get_dir_idx_ptr = &get_left_upper_idx;
+                        break;
+                    case 1:
+                        get_dir_idx_ptr = &get_right_upper_idx;
+                        break;
+                    case 2:
+                        get_dir_idx_ptr = &get_left_lower_idx;
+                        break;
+                    case 3:
+                        get_dir_idx_ptr = &get_right_lower_idx;
+                        break;
+                    default: exit(EXIT_FAILURE);
+                    }
+                    move_piece(tmp_board, cur_tile_idx, get_dir_idx_ptr);
+                    cur_tile_idx = get_dir_idx_ptr(cur_tile_idx);
+                    cur_tile_idx = get_dir_idx_ptr(cur_tile_idx);
+                }
+                chaser = chaser - tmp_count;
+                if (((sequence_count[i] - j) != 1 && chaser <= j) || chaser < j) continue;
+                FLIP_TURN_FLAG(tmp_board);
+                h_first_layer[static_cast<size_t>(host_idx)] = tmp_board[0];
+                h_first_layer[static_cast<size_t>(host_idx) + 1] = tmp_board[1];
+                h_first_layer[static_cast<size_t>(host_idx) + 2] = tmp_board[2];
+                h_first_layer[static_cast<size_t>(host_idx) + 3] = tmp_board[3];
+                cur_tile_idx = selected_tile[i];
+                tmp_board[0] = board[0]; tmp_board[1] = board[1]; tmp_board[2] = board[2]; tmp_board[3] = board[3];
+                chaser = 0;
+                host_idx += 4;
+                ++j;
+            }
+        }
+    }
+
+    // deallocate memory used for computing first layer
+    delete[] selected_tile;
+    delete[] sequence_count;
+
+#ifdef DEBUG
+    // test if layer build correctly - debug
+    for (unsigned int i = 0; i < possible_sequences; ++i)
+    {
+        unsigned int tmp_board[4];
+        tmp_board[0] = h_first_layer[4 * i];
+        tmp_board[1] = h_first_layer[4 * i + 1];
+        tmp_board[2] = h_first_layer[4 * i + 2];
+        tmp_board[3] = h_first_layer[4 * i + 3];
+        system("cls");
+        draw_board(board);
+        std::cout << std::endl << (GET_TURN_FLAG(board) ? BG_WHITE_FG_BLACK : BG_BLACK_FG_WHITE) << (GET_TURN_FLAG(board) ? "White" : "Black") << "'s turn!" << BG_BLACK_FG_WHITE << std::endl << std::endl;
+        std::cout << std::endl;
+        draw_board(tmp_board);
+        std::cout << std::endl << (GET_TURN_FLAG(tmp_board) ? BG_WHITE_FG_BLACK : BG_BLACK_FG_WHITE) << (GET_TURN_FLAG(tmp_board) ? "White" : "Black") << "'s turn!" << BG_BLACK_FG_WHITE << std::endl << std::endl;
+        system("pause");
+    }
+#endif // DEBUG
+
+    // move data to GPU
+    d_first_layer = h_first_layer;
+
+    dim3 dimBlock(THREADS_PER_BLOCK, 1, 1);
+    dim3 dimGrid(possible_sequences, 1, 1);
+
+    thrust::device_vector<curandState> states(64);
+
+#ifdef MEASURE_TIME
+    cudaEventRecord(start);
+#endif // MEASURE_TIME
+    
+    setup_kernel<<<1, 64>>>(thrust::raw_pointer_cast(states.begin().base()));
+
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) printf("%s\n", cudaGetErrorString(err));
+
+    cudaDeviceSynchronize();
+
+    MCTS_kernel<<<dimGrid, dimBlock>>>(thrust::raw_pointer_cast(d_first_layer.begin().base()), thrust::raw_pointer_cast(states.begin().base()), thrust::raw_pointer_cast(d_results.begin().base()));
+
+    err = cudaGetLastError();
+    if (err != cudaSuccess) printf("%s\n", cudaGetErrorString(err));
+
+    cudaDeviceSynchronize();
+        
+#ifdef MEASURE_TIME
+    cudaEventRecord(stop);
+
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&elapsed, start, stop);
+
+    std::cout << std::endl << "GPU Simulation time: " << elapsed << " ms" << std::endl;
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
+    system("pause");
+#endif // MEASURE_TIME
+
+    for (unsigned int i = 0; i < possible_sequences; ++i)
+        success_rates[i] = thrust::reduce(d_results.begin() + (THREADS_PER_BLOCK*i), d_results.begin() + (THREADS_PER_BLOCK * (i+1))) / THREADS_PER_BLOCK.0f;
+
+    // make a move
+    {
+        double max = -1.0;
+        unsigned int idx;
+        for (unsigned int i = 0; i < possible_sequences; ++i)
+            if (success_rates[i] > max)
+            {
+                max = success_rates[i];
+                idx = i;
+            }
+
+        board[0] = h_first_layer[4 * idx];
+        board[1] = h_first_layer[4 * idx + 1];
+        board[2] = h_first_layer[4 * idx + 2];
+        board[3] = h_first_layer[4 * idx + 3];
+    }
+
+    delete[] success_rates;
+}
+
+__global__ void MCTS_kernel(const unsigned int* d_first_layer, curandState* states, float* d_results)
+{
+    const unsigned int tid = threadIdx.x;
+    const unsigned int bid = blockIdx.x;
+    unsigned int tmp_board[4];
+    tmp_board[0] = d_first_layer[4 * tid];
+    tmp_board[1] = d_first_layer[4 * tid + 1];
+    tmp_board[2] = d_first_layer[4 * tid + 2];
+    tmp_board[3] = d_first_layer[4 * tid + 3];
+    unsigned int simulation_result = simulate_game_GPU(tmp_board, states);
+    if (!simulation_result)
+        d_results[tid + THREADS_PER_BLOCK * bid] = 0.0f;
+    else if (simulation_result == 3)
+        d_results[tid + THREADS_PER_BLOCK * bid] = 0.5f;
+    else if ((simulation_result == 2 && GET_TURN_FLAG(tmp_board)) || (simulation_result == 1 && GET_TURN_FLAG(tmp_board)))
+        d_results[tid + THREADS_PER_BLOCK * bid] = 1.0f;
+}
+
+__global__ void setup_kernel(curandState* states)
+{
+    int id = threadIdx.x;
+    curand_init(1234, id, 0, &states[id]);
+}
+
+__device__ float simulate_game_GPU(unsigned int board[4], curandState* states)
+{
+    unsigned int id = blockIdx.x;
+    unsigned int move_pos[4];
+    get_move_possibility(board, move_pos);
+    while (0 != (GET_NUM_OF_MOVES(move_pos))) // end game if noone can move
+    {
+        random_player_GPU(board, move_pos, &states[id]);
+
+        get_move_possibility(board, move_pos);
+    }
+    get_end_state(board);
+
+    return (board[0] & 2048 ? 2 : 0) | (board[0] & 128 ? 1 : 0);
+}
+
+__device__ void random_player_GPU(unsigned int board[4], unsigned int move_pos[4], curandState* state)
+{
+    unsigned int choosen_idx1, choosen_idx2, dir = 0, dir_idx_upper_bound, dir_idx_counter = 0;
+    bool beating_sequence_in_progress = false, tmp;
+    unsigned int (*get_dir_idx_ptr)(unsigned int&);
+
+    get_move_possibility(board, move_pos);
+    dir_idx_upper_bound = GET_NUM_OF_MOVES(move_pos);
+    choosen_idx1 = curand(state) % dir_idx_upper_bound;
+    choosen_idx1 = GET_VAL_MOVE_POS(choosen_idx1, move_pos);
+    do
+    {
+        get_piece_move_pos(board, move_pos, choosen_idx1);
+        dir_idx_upper_bound = GET_NUM_OF_MOVES(move_pos);
+        choosen_idx2 = curand(state) % dir_idx_upper_bound;
+        for (dir = 0, dir_idx_counter = 0; dir_idx_counter <= dir_idx_upper_bound && dir < 4; ++dir)
+        {
+            switch (dir)
+            {
+            case 0:
+                get_dir_idx_ptr = &get_left_upper_idx;
+                break;
+            case 1:
+                get_dir_idx_ptr = &get_right_upper_idx;
+                break;
+            case 2:
+                get_dir_idx_ptr = &get_left_lower_idx;
+                break;
+            case 3:
+                get_dir_idx_ptr = &get_right_lower_idx;
+                break;
+            default: return;
+            }
+            if (dir_idx_counter == choosen_idx2);
+            else if ((GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_BEATING_FLAG(dir, move_pos)) || (!GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_DIR_FLAG(dir, move_pos)))
+            {
+                ++dir_idx_counter;
+                continue;
+            }
+            else continue;
+
+            if (GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_BEATING_FLAG(dir, move_pos))
+            {
+                tmp = IS_KING((GET_VAL_BOARD(choosen_idx1, board))); // for promotion check
+                choosen_idx2 = get_dir_idx_ptr(choosen_idx1);
+                move_piece(board, choosen_idx1, get_dir_idx_ptr);
+                choosen_idx1 = get_dir_idx_ptr(choosen_idx2);
+                if (tmp != (IS_KING((GET_VAL_BOARD(choosen_idx1, board)))))
+                {
+                    FLIP_TURN_FLAG(board);
+                    return;
+                }
+                break;
+            }
+            else if (!GET_BEATING_POS_FLAG(move_pos) && GET_PIECE_DIR_FLAG(dir, move_pos))
+            {
+                move_piece(board, choosen_idx1, get_dir_idx_ptr);
+                FLIP_TURN_FLAG(board);
+                return;
+            }
+        }
+        if (dir == 4) return;
+        get_piece_move_pos(board, move_pos, choosen_idx1);
+        if (!GET_BEATING_POS_FLAG(move_pos)) break; // check if more beatings in sequence
+        beating_sequence_in_progress = true;
+    } while (beating_sequence_in_progress);
+    FLIP_TURN_FLAG(board);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -980,7 +1352,7 @@ void translate_idx_to_cords(unsigned int idx, char cords[2])
 // saves end state in board[0], none - error, 1xxx xxxxx - black win, 1xxx xxxx xxxx - white win, both win - draw
 // after extracting: 0 - error, 1 - black win, 2 - white win, 3 - draw
 // to extract - (board[0] & 2048 ? 2 : 0) | (board[0] & 128 ? 1 : 0)
-void get_end_state(unsigned int board[4])
+__host__ __device__ void get_end_state(unsigned int board[4])
 {
     unsigned int move_pos[4];
 
@@ -1038,6 +1410,7 @@ int main(int argc, char** argv)
                 std::cout << "1. Human Player" << std::endl;
                 std::cout << "2. Random Player" << std::endl;
                 std::cout << "3. MCTS_CPU Player" << std::endl;
+                std::cout << "4. MCTS_GPU Player" << std::endl;
                 std::cout << BG_WHITE_FG_BLACK << "White" << BG_BLACK_FG_WHITE << " Player Choice: ";
                 std::cin >> menu_choice;
                 std::cout << std::endl;
@@ -1055,6 +1428,10 @@ int main(int argc, char** argv)
                     white_player = &MCTS_CPU_player;
                     player_chosen = true;
                     break;
+                case 4:
+                    white_player = &MCTS_GPU_player;
+                    player_chosen = true;
+                    break;
                 default:
                     system("cls");
                     std::cout << "Please provide a valid choice!" << std::endl << std::endl;
@@ -1067,6 +1444,7 @@ int main(int argc, char** argv)
                 std::cout << "1. Human Player" << std::endl;
                 std::cout << "2. Random Player" << std::endl;
                 std::cout << "3. MCTS_CPU Player" << std::endl;
+                std::cout << "4. MCTS_GPU Player" << std::endl;
                 std::cout << "Black Player Choice: ";
                 std::cin >> menu_choice;
                 std::cout << std::endl;
@@ -1082,6 +1460,10 @@ int main(int argc, char** argv)
                     break;
                 case 3:
                     black_player = &MCTS_CPU_player;
+                    player_chosen = true;
+                    break;
+                case 4:
+                    black_player = &MCTS_GPU_player;
                     player_chosen = true;
                     break;
                 default:
@@ -1141,18 +1523,19 @@ void testing_function()
     ////test_get_piece_move_pos(board, move_possibility, 9, 6);
 
     init_board(board);
-    board[0] = 1074020352;
+    /*board[0] = 1074020352;
     board[1] = 1178861808;
     board[2] = 102;
-    board[3] = 419424;
+    board[3] = 419424;*/
     //FLIP_TURN_FLAG(board);
     system("cls");
     draw_board(board);
-    test_get_move_possibility(board, move_possibility);
-    test_get_piece_move_pos(board, move_possibility, 4);
-    MCTS_CPU_player(board, move_possibility);
-    //game_loop(board, &random_player, &random_player);
-    disp_end_state(board);
+    std::cout << std::endl << (GET_TURN_FLAG(board) ? BG_WHITE_FG_BLACK : BG_BLACK_FG_WHITE) << (GET_TURN_FLAG(board) ? "White" : "Black") << "'s turn!" << BG_BLACK_FG_WHITE << std::endl << std::endl;
+    MCTS_GPU_player(board, move_possibility);
+    draw_board(board);
+    std::cout << std::endl << (GET_TURN_FLAG(board) ? BG_WHITE_FG_BLACK : BG_BLACK_FG_WHITE) << (GET_TURN_FLAG(board) ? "White" : "Black") << "'s turn!" << BG_BLACK_FG_WHITE << std::endl << std::endl;
+    //game_loop(board, MCTS_GPU_player, MCTS_GPU_player);
+    //disp_end_state(board);
     system("pause");
 
     //unsigned int game_count = 1000000;

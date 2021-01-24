@@ -16,4 +16,4 @@ to try and find the best possible move.
   * Human - DONE
   * Fully Random - DONE
   * MCTS on CPU - Partially DONE
-  * MCTS on CUDA - TODO
+  * MCTS on CUDA - DONE - for small number of simulations
