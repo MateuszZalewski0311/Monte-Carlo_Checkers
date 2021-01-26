@@ -15,5 +15,5 @@ to try and find the best possible move.
 * Player Functions
   * Human - DONE
   * Fully Random - DONE
-  * MCTS on CPU - Partially DONE
-  * MCTS on CUDA - DONE - for small number of simulations
+  * MCTS on CPU - DONE
+  * MCTS on CUDA - DONE - 1 milion simulations per sequence

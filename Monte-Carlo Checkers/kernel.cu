@@ -38,11 +38,12 @@
 //#define DEBUG;
 //#define MEASURE_TIME
 #define THREADS_PER_BLOCK 1024
+#define BLOCKS_PER_SEQUENCE 1024
 //////////////////////////////////////////////////////////////////////////////// - board state macros
 #define SET_VAL_BOARD(idx, val, board) board[idx >> 3] ^= (board[idx >> 3] ^ val << ((idx & 7) << 2)) & (15 << ((idx & 7) << 2))
 #define GET_VAL_BOARD(idx, board) board[idx >> 3] << 28 - ((idx & 7) << 2) >> 28
 #define GET_VAL_BOARD_S(idx, board) idx > 31 ? 8 : board[idx >> 3] << 28 - ((idx & 7) << 2) >> 28
-//#define IS_EMPTY(tile) (bool)(!tile)
+//#define IS_EMPTY(tile) (bool)(!tile) - NEVER USE
 #define IS_PIECE(tile) (bool)(tile & 4)
 #define IS_WHITE(tile) (bool)(tile & 2)
 #define IS_BLACK(tile) (bool)(~tile & 2)
@@ -83,7 +84,7 @@ unsigned int simulate_game(unsigned int board[4]);
 unsigned int count_beating_sequences_for_piece_dir(unsigned int board[4], unsigned int cur_tile_idx, unsigned int dir);
 void MCTS_CPU_player(unsigned int board[4], unsigned int move_pos[4]);
 void MCTS_GPU_player(unsigned int board[4], unsigned int move_pos[4]);
-__global__ void MCTS_kernel(const unsigned int* d_first_layer, curandState* states, float* d_results);
+__global__ void MCTS_kernel(const unsigned int* d_first_layer, curandState* states, float* d_results, const unsigned int possible_sequences);
 __global__ void setup_kernel(curandState* states);
 __device__ void random_player_GPU(unsigned int board[4], unsigned int move_pos[4], curandState* state);
 ////////////////////////////////////////////////////////////////////////////////
@@ -92,7 +93,7 @@ void disp_possible_dirs(unsigned int board[4], unsigned int move_pos[4], unsigne
 void get_cords_from_console(char cords[2]);
 unsigned int translate_cords_to_idx(const char cords[2]);
 void translate_idx_to_cords(unsigned int idx, char cords[2]);
-__device__ float simulate_game_GPU(unsigned int board[4], curandState* states);
+__device__ float simulate_game_GPU(unsigned int board[4], curandState* states, const unsigned int possible_sequences);
 __host__ __device__ void get_end_state(unsigned int board[4]);
 void disp_end_state(unsigned int* board);
 ////////////////////////////////////////////////////////////////////////////////
@@ -359,7 +360,7 @@ __host__ __device__ void move_piece(unsigned int board[4], unsigned int& cur_til
     if (other_tile_idx == 32) return;
 
     unsigned int cur_tile = GET_VAL_BOARD(cur_tile_idx, board);
-    if (!(GET_VAL_BOARD(other_tile_idx, board)))
+    if (!IS_PIECE(GET_VAL_BOARD(other_tile_idx, board)))
     {
         SET_VAL_BOARD(other_tile_idx, cur_tile, board);
         SET_VAL_BOARD(cur_tile_idx, 0, board);
@@ -652,12 +653,10 @@ void MCTS_CPU_player(unsigned int board[4], unsigned int move_pos[4])
     double** success_rate, ** tries;
 
 #ifdef MEASURE_TIME
-    float elapsed;
-    cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
+    std::chrono::steady_clock::time_point start, stop;
+    std::chrono::duration<double, std::milli> elapsed;
     
-    cudaEventRecord(start);
+    start = std::chrono::high_resolution_clock::now();
 #endif // MEASURE_TIME
 
     // allocate memory for first layer
@@ -794,13 +793,11 @@ void MCTS_CPU_player(unsigned int board[4], unsigned int move_pos[4])
     //}
 
 #ifdef MEASURE_TIME
-    cudaEventRecord(stop);
+    stop = std::chrono::high_resolution_clock::now();
+    elapsed = (stop - start);
 
-    cudaEventSynchronize(stop);
-    cudaEventElapsedTime(&elapsed, start, stop);
-
-    std::cout << std::endl << "First Layer Building time: " << elapsed << " ms" << std::endl;
-    cudaEventRecord(start);
+    std::cout << "CPU - First Layer Building time: " << elapsed.count() << " ms" << std::endl;
+    start = std::chrono::high_resolution_clock::now();
 #endif // MEASURE_TIME
 
     // run simulations
@@ -816,7 +813,7 @@ void MCTS_CPU_player(unsigned int board[4], unsigned int move_pos[4])
         for (unsigned int i = 0; i < choosable_piece_count; ++i)
             possible_sequences += sequence_count[i];
 
-        for (unsigned int i = 0; i < possible_sequences * THREADS_PER_BLOCK; ++i)
+        for (unsigned int i = 0; i < possible_sequences * THREADS_PER_BLOCK * BLOCKS_PER_SEQUENCE; ++i)
         {
             if (choosable_piece_count - 1) piece_choice = dist1(gen);
             else piece_choice = 0;
@@ -842,15 +839,11 @@ void MCTS_CPU_player(unsigned int board[4], unsigned int move_pos[4])
     }
 
 #ifdef MEASURE_TIME
-    cudaEventRecord(stop);
+    stop = std::chrono::high_resolution_clock::now();
+    elapsed = (stop - start);
 
-    cudaEventSynchronize(stop);
-    cudaEventElapsedTime(&elapsed, start, stop);
-
-    std::cout << std::endl << "CPU Simulation time: " << elapsed << " ms" << std::endl;
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
-    system("pause");
+    std::cout << std::endl << "CPU - Simulation time: " << std::chrono::duration_cast<std::chrono::seconds>(elapsed).count() << " s" << std::endl;
+    start = std::chrono::high_resolution_clock::now();
 #endif // MEASURE_TIME
 
     // extract success rate
@@ -877,6 +870,14 @@ void MCTS_CPU_player(unsigned int board[4], unsigned int move_pos[4])
         board[3] = first_layer[idx1][idx2][3];
     }
 
+#ifdef MEASURE_TIME
+    stop = std::chrono::high_resolution_clock::now();
+    elapsed = (stop - start);
+
+    std::cout << std::endl << "CPU - Choosing move time: " << elapsed.count() << " ms" << std::endl << std::endl;
+    system("pause");
+#endif // MEASURE_TIME
+
     // deallocate memory for first layer
     for (unsigned int i = 0; i < choosable_piece_count; ++i)
     {
@@ -901,10 +902,14 @@ void MCTS_GPU_player(unsigned int board[4], unsigned int move_pos[4])
     float* success_rates;
 
 #ifdef MEASURE_TIME
-    float elapsed;
-    cudaEvent_t start, stop;
-    cudaEventCreate(&start);
-    cudaEventCreate(&stop);
+    float elapsedGPU;
+    cudaEvent_t startGPU, stopGPU;
+    cudaEventCreate(&startGPU);
+    cudaEventCreate(&stopGPU);
+    std::chrono::steady_clock::time_point startCPU, stopCPU;
+    std::chrono::duration<double, std::milli> elapsedCPU;
+
+    startCPU = std::chrono::high_resolution_clock::now();
 #endif // MEASURE_TIME
 
     // allocate memory for computing first layer
@@ -931,8 +936,8 @@ void MCTS_GPU_player(unsigned int board[4], unsigned int move_pos[4])
     }
     // allocate memory for host_vector
     h_first_layer = thrust::host_vector<unsigned int>(static_cast<size_t>(possible_sequences) * 4);
-    d_results = thrust::device_vector<float>(static_cast<size_t>(possible_sequences) * THREADS_PER_BLOCK);
-    success_rates = new float[possible_sequences];
+    d_results = thrust::device_vector<float>(static_cast<size_t>(possible_sequences) * THREADS_PER_BLOCK * BLOCKS_PER_SEQUENCE);
+    success_rates = new float[possible_sequences * BLOCKS_PER_SEQUENCE];
 
     // build first layer
     for (unsigned int host_idx = 0, i = 0; i < choosable_piece_count; ++i)
@@ -1022,6 +1027,13 @@ void MCTS_GPU_player(unsigned int board[4], unsigned int move_pos[4])
         }
     }
 
+#ifdef MEASURE_TIME
+    stopCPU = std::chrono::high_resolution_clock::now();
+    elapsedCPU = (stopCPU - startCPU);
+
+    std::cout << "CPU - First Layer Building time: " << elapsedCPU.count() << " ms" << std::endl;
+#endif // MEASURE_TIME
+
     // deallocate memory used for computing first layer
     delete[] selected_tile;
     delete[] sequence_count;
@@ -1045,17 +1057,17 @@ void MCTS_GPU_player(unsigned int board[4], unsigned int move_pos[4])
     }
 #endif // DEBUG
 
+#ifdef MEASURE_TIME
+    cudaEventRecord(startGPU);
+#endif // MEASURE_TIME
+
     // move data to GPU
     d_first_layer = h_first_layer;
 
     dim3 dimBlock(THREADS_PER_BLOCK, 1, 1);
-    dim3 dimGrid(possible_sequences, 1, 1);
+    dim3 dimGrid(possible_sequences * BLOCKS_PER_SEQUENCE, 1, 1);
 
     thrust::device_vector<curandState> states(64);
-
-#ifdef MEASURE_TIME
-    cudaEventRecord(start);
-#endif // MEASURE_TIME
     
     setup_kernel<<<1, 64>>>(thrust::raw_pointer_cast(states.begin().base()));
 
@@ -1064,7 +1076,7 @@ void MCTS_GPU_player(unsigned int board[4], unsigned int move_pos[4])
 
     cudaDeviceSynchronize();
 
-    MCTS_kernel<<<dimGrid, dimBlock>>>(thrust::raw_pointer_cast(d_first_layer.begin().base()), thrust::raw_pointer_cast(states.begin().base()), thrust::raw_pointer_cast(d_results.begin().base()));
+    MCTS_kernel<<<dimGrid, dimBlock>>>(thrust::raw_pointer_cast(d_first_layer.begin().base()), thrust::raw_pointer_cast(states.begin().base()), thrust::raw_pointer_cast(d_results.begin().base()), possible_sequences);
 
     err = cudaGetLastError();
     if (err != cudaSuccess) printf("%s\n", cudaGetErrorString(err));
@@ -1072,19 +1084,32 @@ void MCTS_GPU_player(unsigned int board[4], unsigned int move_pos[4])
     cudaDeviceSynchronize();
         
 #ifdef MEASURE_TIME
-    cudaEventRecord(stop);
+    cudaEventRecord(stopGPU);
 
-    cudaEventSynchronize(stop);
-    cudaEventElapsedTime(&elapsed, start, stop);
+    cudaEventSynchronize(stopGPU);
+    cudaEventElapsedTime(&elapsedGPU, startGPU, stopGPU);
 
-    std::cout << std::endl << "GPU Simulation time: " << elapsed << " ms" << std::endl;
-    cudaEventDestroy(start);
-    cudaEventDestroy(stop);
-    system("pause");
+    std::cout << std::endl << "GPU - Simulation time: " << elapsedGPU << " ms" << std::endl;
+    cudaEventRecord(startGPU);
 #endif // MEASURE_TIME
 
-    for (unsigned int i = 0; i < possible_sequences; ++i)
+    for (unsigned int i = 0; i < possible_sequences * BLOCKS_PER_SEQUENCE; ++i)
         success_rates[i] = thrust::reduce(d_results.begin() + (THREADS_PER_BLOCK*i), d_results.begin() + (THREADS_PER_BLOCK * (i+1))) / THREADS_PER_BLOCK.0f;
+
+#ifdef MEASURE_TIME
+    cudaEventRecord(stopGPU);
+
+    cudaEventSynchronize(stopGPU);
+    cudaEventElapsedTime(&elapsedGPU, startGPU, stopGPU);
+
+    std::cout << std::endl << "GPU - Results Reduction time: " << elapsedGPU << " ms" << std::endl;
+    cudaEventDestroy(startGPU);
+    cudaEventDestroy(stopGPU);
+    startCPU = std::chrono::high_resolution_clock::now();
+#endif // MEASURE_TIME
+
+    for (unsigned int i = possible_sequences; i < possible_sequences * BLOCKS_PER_SEQUENCE; ++i)
+        success_rates[i % possible_sequences] += success_rates[i];
 
     // make a move
     {
@@ -1094,7 +1119,7 @@ void MCTS_GPU_player(unsigned int board[4], unsigned int move_pos[4])
             if (success_rates[i] > max)
             {
                 max = success_rates[i];
-                idx = i;
+                idx = i % possible_sequences;
             }
 
         board[0] = h_first_layer[4 * idx];
@@ -1103,19 +1128,27 @@ void MCTS_GPU_player(unsigned int board[4], unsigned int move_pos[4])
         board[3] = h_first_layer[4 * idx + 3];
     }
 
+#ifdef MEASURE_TIME
+    stopCPU = std::chrono::high_resolution_clock::now();
+    elapsedCPU = (stopCPU - startCPU);
+
+    std::cout << std::endl << "CPU - Choosing move time: " << elapsedCPU.count() << " ms" << std::endl << std::endl;
+    system("pause");
+#endif // MEASURE_TIME
+
     delete[] success_rates;
 }
 
-__global__ void MCTS_kernel(const unsigned int* d_first_layer, curandState* states, float* d_results)
+__global__ void MCTS_kernel(const unsigned int* d_first_layer, curandState* states, float* d_results, const unsigned int possible_sequences)
 {
     const unsigned int tid = threadIdx.x;
     const unsigned int bid = blockIdx.x;
     unsigned int tmp_board[4];
-    tmp_board[0] = d_first_layer[4 * tid];
-    tmp_board[1] = d_first_layer[4 * tid + 1];
-    tmp_board[2] = d_first_layer[4 * tid + 2];
-    tmp_board[3] = d_first_layer[4 * tid + 3];
-    unsigned int simulation_result = simulate_game_GPU(tmp_board, states);
+    tmp_board[0] = d_first_layer[4 * (bid % possible_sequences)];
+    tmp_board[1] = d_first_layer[4 * (bid % possible_sequences) + 1];
+    tmp_board[2] = d_first_layer[4 * (bid % possible_sequences) + 2];
+    tmp_board[3] = d_first_layer[4 * (bid % possible_sequences) + 3];
+    unsigned int simulation_result = simulate_game_GPU(tmp_board, states, possible_sequences);
     if (!simulation_result)
         d_results[tid + THREADS_PER_BLOCK * bid] = 0.0f;
     else if (simulation_result == 3)
@@ -1130,9 +1163,9 @@ __global__ void setup_kernel(curandState* states)
     curand_init(1234, id, 0, &states[id]);
 }
 
-__device__ float simulate_game_GPU(unsigned int board[4], curandState* states)
+__device__ float simulate_game_GPU(unsigned int board[4], curandState* states, const unsigned int possible_sequences)
 {
-    unsigned int id = blockIdx.x;
+    unsigned int id = blockIdx.x % possible_sequences;
     unsigned int move_pos[4];
     get_move_possibility(board, move_pos);
     while (0 != (GET_NUM_OF_MOVES(move_pos))) // end game if noone can move
@@ -1523,17 +1556,28 @@ void testing_function()
     ////test_get_piece_move_pos(board, move_possibility, 9, 6);
 
     init_board(board);
-    /*board[0] = 1074020352;
+    board[0] = 1074020352;
     board[1] = 1178861808;
     board[2] = 102;
-    board[3] = 419424;*/
-    //FLIP_TURN_FLAG(board);
+    board[3] = 419424;
+    board[0] = 6569984;
+    board[1] = 0;
+    board[2] = 0;
+    board[3] = 0;
+    FLIP_TURN_FLAG(board);
     system("cls");
     draw_board(board);
     std::cout << std::endl << (GET_TURN_FLAG(board) ? BG_WHITE_FG_BLACK : BG_BLACK_FG_WHITE) << (GET_TURN_FLAG(board) ? "White" : "Black") << "'s turn!" << BG_BLACK_FG_WHITE << std::endl << std::endl;
-    MCTS_GPU_player(board, move_possibility);
+    get_move_possibility(board, move_possibility);
+    disp_moveable_pieces(board, move_possibility);
+    unsigned int idx = 5;
+    disp_possible_dirs(board, move_possibility, idx);
+    move_piece(board, idx, &get_left_upper_idx);
+    //move_piece(board, idx, &get_right_upper_idx);
     draw_board(board);
-    std::cout << std::endl << (GET_TURN_FLAG(board) ? BG_WHITE_FG_BLACK : BG_BLACK_FG_WHITE) << (GET_TURN_FLAG(board) ? "White" : "Black") << "'s turn!" << BG_BLACK_FG_WHITE << std::endl << std::endl;
+    //MCTS_GPU_player(board, move_possibility);
+    //draw_board(board);
+    //std::cout << std::endl << (GET_TURN_FLAG(board) ? BG_WHITE_FG_BLACK : BG_BLACK_FG_WHITE) << (GET_TURN_FLAG(board) ? "White" : "Black") << "'s turn!" << BG_BLACK_FG_WHITE << std::endl << std::endl;
     //game_loop(board, MCTS_GPU_player, MCTS_GPU_player);
     //disp_end_state(board);
     system("pause");
@@ -1834,31 +1878,6 @@ void test_translate_idx_to_cords()
     }
     std::cout << std::endl;
 }
-
-//void move_piece(unsigned int board[4], unsigned int& cur_tile_idx, unsigned int (*get_dir_idx_ptr)(unsigned int&, unsigned int*))
-//{
-//    if (cur_tile_idx > 31) return;
-//
-//    unsigned int other_tile_idx = get_dir_idx_ptr(cur_tile_idx, board);
-//    if (other_tile_idx == 32) return;
-//
-//    unsigned int cur_tile = GET_VAL_BOARD_S(cur_tile_idx, board);
-//    unsigned int other_tile = GET_VAL_BOARD_S(other_tile_idx, board);
-//    if (!IS_PIECE(other_tile))
-//    {
-//        SET_VAL_BOARD(other_tile_idx, cur_tile, board);
-//        SET_VAL_BOARD(cur_tile_idx, 0, board);
-//    }
-//    else if (IS_WHITE(cur_tile) == IS_WHITE(other_tile)) return;
-//    else
-//    {
-//        unsigned int other_tile_idx2 = get_dir_idx_ptr(other_tile_idx, board);
-//        if (GET_VAL_BOARD_S(other_tile_idx2, board)) return;
-//        SET_VAL_BOARD(other_tile_idx2, cur_tile, board);
-//        SET_VAL_BOARD(other_tile_idx, 0, board);
-//        SET_VAL_BOARD(cur_tile_idx, 0, board);
-//    }
-//}
 
 //void bench(unsigned int board[4])
 //{
