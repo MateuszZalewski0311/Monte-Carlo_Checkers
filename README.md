@@ -16,4 +16,4 @@ to try and find the best possible move.
   * Human - DONE
   * Fully Random - DONE
   * MCTS on CPU - DONE
-  * MCTS on CUDA - DONE - 1 milion simulations per sequence
+  * MCTS on CUDA - DONE - 67 milion (more possible) simulations per sequence

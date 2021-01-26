@@ -36,9 +36,11 @@
 // indexing: 7 6 5 4 3 2 1 0
 
 //#define DEBUG;
-//#define MEASURE_TIME
+#define MEASURE_TIME
 #define THREADS_PER_BLOCK 1024
-#define BLOCKS_PER_SEQUENCE 1024
+#define BLOCKS_PER_SEQUENCE_X 1024
+#define BLOCKS_PER_SEQUENCE_Y 128
+#define BLOCKS_PER_SEQUENCE_Z 1
 //////////////////////////////////////////////////////////////////////////////// - board state macros
 #define SET_VAL_BOARD(idx, val, board) board[idx >> 3] ^= (board[idx >> 3] ^ val << ((idx & 7) << 2)) & (15 << ((idx & 7) << 2))
 #define GET_VAL_BOARD(idx, board) board[idx >> 3] << 28 - ((idx & 7) << 2) >> 28
@@ -813,7 +815,7 @@ void MCTS_CPU_player(unsigned int board[4], unsigned int move_pos[4])
         for (unsigned int i = 0; i < choosable_piece_count; ++i)
             possible_sequences += sequence_count[i];
 
-        for (unsigned int i = 0; i < possible_sequences * THREADS_PER_BLOCK * BLOCKS_PER_SEQUENCE; ++i)
+        for (unsigned int i = 0; i < possible_sequences * THREADS_PER_BLOCK * BLOCKS_PER_SEQUENCE_X * BLOCKS_PER_SEQUENCE_Y * BLOCKS_PER_SEQUENCE_Z; ++i)
         {
             if (choosable_piece_count - 1) piece_choice = dist1(gen);
             else piece_choice = 0;
@@ -936,8 +938,8 @@ void MCTS_GPU_player(unsigned int board[4], unsigned int move_pos[4])
     }
     // allocate memory for host_vector
     h_first_layer = thrust::host_vector<unsigned int>(static_cast<size_t>(possible_sequences) * 4);
-    d_results = thrust::device_vector<float>(static_cast<size_t>(possible_sequences) * THREADS_PER_BLOCK * BLOCKS_PER_SEQUENCE);
-    success_rates = new float[possible_sequences * BLOCKS_PER_SEQUENCE];
+    d_results = thrust::device_vector<float>(static_cast<size_t>(possible_sequences) * THREADS_PER_BLOCK * BLOCKS_PER_SEQUENCE_X * BLOCKS_PER_SEQUENCE_Y * BLOCKS_PER_SEQUENCE_Z);
+    success_rates = new float[possible_sequences * BLOCKS_PER_SEQUENCE_X * BLOCKS_PER_SEQUENCE_Y * BLOCKS_PER_SEQUENCE_Z];
 
     // build first layer
     for (unsigned int host_idx = 0, i = 0; i < choosable_piece_count; ++i)
@@ -1065,7 +1067,7 @@ void MCTS_GPU_player(unsigned int board[4], unsigned int move_pos[4])
     d_first_layer = h_first_layer;
 
     dim3 dimBlock(THREADS_PER_BLOCK, 1, 1);
-    dim3 dimGrid(possible_sequences * BLOCKS_PER_SEQUENCE, 1, 1);
+    dim3 dimGrid(possible_sequences * BLOCKS_PER_SEQUENCE_X, BLOCKS_PER_SEQUENCE_Y, BLOCKS_PER_SEQUENCE_Z);
 
     thrust::device_vector<curandState> states(64);
     
@@ -1093,7 +1095,7 @@ void MCTS_GPU_player(unsigned int board[4], unsigned int move_pos[4])
     cudaEventRecord(startGPU);
 #endif // MEASURE_TIME
 
-    for (unsigned int i = 0; i < possible_sequences * BLOCKS_PER_SEQUENCE; ++i)
+    for (unsigned int i = 0; i < possible_sequences * BLOCKS_PER_SEQUENCE_X * BLOCKS_PER_SEQUENCE_Y * BLOCKS_PER_SEQUENCE_Z; ++i)
         success_rates[i] = thrust::reduce(d_results.begin() + (THREADS_PER_BLOCK*i), d_results.begin() + (THREADS_PER_BLOCK * (i+1))) / THREADS_PER_BLOCK.0f;
 
 #ifdef MEASURE_TIME
@@ -1108,7 +1110,7 @@ void MCTS_GPU_player(unsigned int board[4], unsigned int move_pos[4])
     startCPU = std::chrono::high_resolution_clock::now();
 #endif // MEASURE_TIME
 
-    for (unsigned int i = possible_sequences; i < possible_sequences * BLOCKS_PER_SEQUENCE; ++i)
+    for (unsigned int i = possible_sequences; i < possible_sequences * BLOCKS_PER_SEQUENCE_X * BLOCKS_PER_SEQUENCE_Y * BLOCKS_PER_SEQUENCE_Z; ++i)
         success_rates[i % possible_sequences] += success_rates[i];
 
     // make a move
@@ -1142,7 +1144,7 @@ void MCTS_GPU_player(unsigned int board[4], unsigned int move_pos[4])
 __global__ void MCTS_kernel(const unsigned int* d_first_layer, curandState* states, float* d_results, const unsigned int possible_sequences)
 {
     const unsigned int tid = threadIdx.x;
-    const unsigned int bid = blockIdx.x;
+    const unsigned int bid = blockIdx.x + blockDim.y * (blockIdx.y + blockIdx.z * blockDim.z);
     unsigned int tmp_board[4];
     tmp_board[0] = d_first_layer[4 * (bid % possible_sequences)];
     tmp_board[1] = d_first_layer[4 * (bid % possible_sequences) + 1];
@@ -1165,7 +1167,7 @@ __global__ void setup_kernel(curandState* states)
 
 __device__ float simulate_game_GPU(unsigned int board[4], curandState* states, const unsigned int possible_sequences)
 {
-    unsigned int id = blockIdx.x % possible_sequences;
+    unsigned int id = (blockIdx.x + blockDim.y * (blockIdx.y + blockIdx.z * blockDim.z)) % possible_sequences;
     unsigned int move_pos[4];
     get_move_possibility(board, move_pos);
     while (0 != (GET_NUM_OF_MOVES(move_pos))) // end game if noone can move
